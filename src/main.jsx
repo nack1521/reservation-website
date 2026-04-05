@@ -16,6 +16,8 @@ import Home from "./pages/Home.jsx";
 import Booking from "./pages/Booking.jsx";
 import Success from "./pages/Success.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import AdminDashboard from "./pages/AdminDashboard.jsx";
+import AdminRooms from "./pages/AdminRooms.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import Login from "./pages/Login.jsx";
 import UserGuide from "./pages/UserGuide.jsx";
@@ -49,6 +51,8 @@ const router = createBrowserRouter([
           { path: "/book", element: <Booking /> },
           { path: "/success", element: <Success /> },
           { path: "/dashboard", element: <Dashboard /> },
+          { path: "/admin-dashboard", element: <AdminDashboard /> },
+          { path: "/admin-rooms", element: <AdminRooms /> },
           { path: "/user-guide", element: <UserGuide /> },
           { path: "/profile", element: <Profile /> },
         ],

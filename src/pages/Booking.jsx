@@ -1,6 +1,8 @@
 // src/pages/Booking.jsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { roomAPI } from "../services/rooms.js";
+import { reservationsAPI } from "../services/reservations.js";
 
 /* ===================== CONFIG ===================== */
 
@@ -16,17 +18,8 @@ const FLOOR_LABEL = {
 };
 const FLOORS = Object.keys(FLOOR_LABEL).map(Number);
 
-const SLOTS = [
-  "08:30 - 09:30",
-  "09:30 - 10:30",
-  "10:30 - 11:30",
-  "11:30 - 12:30",
-  "12:30 - 13:30",
-  "13:30 - 14:30",
-  "14:30 - 15:30",
-  "15:30 - 16:30",
-  "16:30 - 17:30",
-];
+const SLOTS = buildHourlySlots("07:30", "20:30");
+const TIME_POINTS = buildTimePoints("07:30", "20:30");
 
 
 const TYPES = ["Lecture", "Computer Lab", "Seminar", "Workshop", "Electronics Lab"];
@@ -41,35 +34,6 @@ function roomsOfFloor(floor) {
   }));
 }
 
-// Add-ons
-const ADDONS_BY_TYPE = {
-  Lecture: [
-    { id: "whiteboard", label: "กระดานไวท์บอร์ดเสริม", unit: "แผ่น", max: 2 },
-    { id: "chair", label: "เก้าอี้เสริม", unit: "ตัว", max: 30 },
-    { id: "table", label: "โต๊ะเสริม", unit: "ตัว", max: 10 },
-    { id: "mic", label: "ไมค์ลอย", unit: "ตัว", max: 4 },
-  ],
-  "Computer Lab": [
-    { id: "pc-extra", label: "เครื่องคอมพ์เสริม", unit: "เครื่อง", max: 10 },
-    { id: "it-support", label: "เจ้าหน้าที่ IT On-site", unit: "คน", max: 2 },
-    { id: "headset", label: "หูฟังไมค์", unit: "ชุด", max: 20 },
-  ],
-  Seminar: [
-    { id: "coffee", label: "Coffee Break", unit: "ชุด", max: 100 },
-    { id: "projector", label: "โปรเจคเตอร์เสริม", unit: "เครื่อง", max: 1 },
-    { id: "mc-stand", label: "ไมค์ตั้งโต๊ะ", unit: "ตัว", max: 4 },
-  ],
-  Workshop: [
-    { id: "workbench", label: "โต๊ะทำงานกลุ่มเพิ่ม", unit: "ชุด", max: 6 },
-    { id: "toolkit", label: "ชุดอุปกรณ์ Workshop", unit: "ชุด", max: 20 },
-    { id: "safety", label: "อุปกรณ์ความปลอดภัย", unit: "ชุด", max: 30 },
-  ],
-  "Electronics Lab": [
-    { id: "solder", label: "หัวแร้งบัดกรี", unit: "ชุด", max: 10 },
-    { id: "psu", label: "Power Supply", unit: "เครื่อง", max: 6 },
-    { id: "scope", label: "Oscilloscope", unit: "เครื่อง", max: 4 },
-  ],
-};
 
 /* ===================== PAGE ===================== */
 export default function Booking() {
@@ -97,15 +61,35 @@ export default function Booking() {
   // Filters
   const [minCap, setMinCap] = useState(0);
   const [typeFilter, setTypeFilter] = useState("ทั้งหมด");
+  const [roomKeyword, setRoomKeyword] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [sortBy, setSortBy] = useState("capacity");
+  const [sortOrder, setSortOrder] = useState("desc");
 
   // Room selection
   const [selected, setSelected] = useState(null);
 
   // Add-ons
   const [addons, setAddons] = useState({});
+  const [addonOptions, setAddonOptions] = useState([]);
+  const [addonsLoading, setAddonsLoading] = useState(false);
+  const [addonsError, setAddonsError] = useState("");
+  const [roomsFromApi, setRoomsFromApi] = useState([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState("");
+  const [availabilityByRoom, setAvailabilityByRoom] = useState({});
+  const [busySlotByIndex, setBusySlotByIndex] = useState({});
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [approvedHoursToday, setApprovedHoursToday] = useState(0);
+  const [reservationError, setReservationError] = useState("");
+  const [reservationSubmitting, setReservationSubmitting] = useState(false);
+  const [createdReservationStatus, setCreatedReservationStatus] = useState("");
+  const [createdReservationMessage, setCreatedReservationMessage] = useState("");
 
   const hasDate = !!date;
   const hasTimeRange = slotStart !== null && slotEnd !== null;
+  const userRole = (localStorage.getItem("authRole") || "student").toLowerCase();
+  const isStudent = !["teacher", "admin", "super_admin"].includes(userRole);
 
   // เงื่อนไขไป step ต่อไป แยกตามโหมด
   const canNextFromStep1 = isTimeFirst
@@ -121,9 +105,70 @@ export default function Booking() {
 
   const startIdx = hasTimeRange ? Math.min(slotStart, slotEnd) : null;
   const endIdx = hasTimeRange ? Math.max(slotStart, slotEnd) : null;
-  const timeRangeLabel = hasTimeRange ? `${SLOTS[startIdx]} → ${SLOTS[endIdx]}` : "";
+  const timeRangeLabel = hasTimeRange
+    ? `Start ${TIME_POINTS[startIdx].display} · End ${TIME_POINTS[endIdx].display}`
+    : "";
+  const selectedHours = hasTimeRange ? endIdx - startIdx : 0;
+  const exceedsStudentDailyLimit = isStudent && approvedHoursToday + selectedHours > 2;
 
-  const roomsRaw = useMemo(() => (floor ? roomsOfFloor(floor) : []), [floor]);
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadRooms() {
+      if (!floor) {
+        setRoomsFromApi([]);
+        setRoomsError("");
+        setRoomsLoading(false);
+        return;
+      }
+
+      setRoomsLoading(true);
+      setRoomsError("");
+
+      try {
+        const result = await roomAPI.list({
+          q: roomKeyword || undefined,
+          type: typeFilter === "ทั้งหมด" ? undefined : typeFilter,
+          floor,
+          location: locationFilter || undefined,
+          minCapacity: minCap > 0 ? minCap : undefined,
+          page: 1,
+          limit: 100,
+          sortBy,
+          sortOrder,
+        });
+        const rooms = result.items;
+        if (!ignore) {
+          setRoomsFromApi(rooms);
+          setSelected((prev) => {
+            if (!prev) return prev;
+            return rooms.some((r) => r.id === prev.id) ? prev : null;
+          });
+        }
+      } catch (error) {
+        if (!ignore) {
+          setRoomsFromApi([]);
+          setRoomsError(error?.message || "Cannot load rooms from backend.");
+        }
+      } finally {
+        if (!ignore) setRoomsLoading(false);
+      }
+    }
+
+    loadRooms();
+
+    return () => {
+      ignore = true;
+    };
+  }, [floor, roomKeyword, locationFilter, typeFilter, minCap, sortBy, sortOrder]);
+
+  const roomsRaw = useMemo(() => {
+    if (!floor) return [];
+    if (roomsFromApi.length) {
+      return roomsFromApi.filter((room) => !room.floor || room.floor === String(floor));
+    }
+    return roomsOfFloor(floor);
+  }, [floor, roomsFromApi]);
   const roomsFiltered = useMemo(() => {
     let list = roomsRaw;
     if (minCap > 0) list = list.filter((r) => r.capacity >= Number(minCap));
@@ -131,25 +176,157 @@ export default function Booking() {
     return list;
   }, [roomsRaw, minCap, typeFilter]);
 
-  const availability = useMemo(() => {
-    if (!canShowRooms) return {};
-    const t = {};
+  useEffect(() => {
+    let ignore = false;
 
-    // ถ้ายังไม่เลือกวันหรือช่วงเวลา → ยังไม่เช็คว่าว่าง/ไม่ว่าง
-    if (!hasTimeRange || !date) return t;
+    async function loadAvailability() {
+      if (!date || !hasTimeRange || !roomsRaw.length) {
+        setAvailabilityByRoom({});
+        return;
+      }
 
-    let busyCount = 0;
-    for (const r of roomsFiltered) {
-      const busy = isBusyRange(floor, date, r.id, startIdx, endIdx);
-      t[r.id] = { busy };
-      if (busy) busyCount++;
+      setAvailabilityLoading(true);
+      try {
+        const selectedStart = getPointISO(date, startIdx);
+        const selectedEnd = getPointISO(date, endIdx);
+
+        const rows = await Promise.all(
+          roomsRaw.map(async (room) => {
+            const roomId = getReservationRoomId(room);
+            if (!roomId) return [room.id, { busy: false }];
+
+            const data = await reservationsAPI.availability(roomId, date);
+            const blocks = Array.isArray(data?.blocks) ? data.blocks : [];
+            const busy = blocks.some((block) => {
+              if (block.isFree) return false;
+              return hasOverlap(selectedStart, selectedEnd, block.start, block.end);
+            });
+            return [room.id, { busy }];
+          })
+        );
+
+        if (!ignore) setAvailabilityByRoom(Object.fromEntries(rows));
+      } catch {
+        if (!ignore) setAvailabilityByRoom({});
+      } finally {
+        if (!ignore) setAvailabilityLoading(false);
+      }
     }
-    // กันไม่ให้ว่าง 0 ห้อง (เดโม)
-    if (roomsFiltered.length && busyCount === roomsFiltered.length) {
-      for (let i = 0; i < Math.min(2, roomsFiltered.length); i++) t[roomsFiltered[i].id].busy = false;
+
+    loadAvailability();
+    return () => {
+      ignore = true;
+    };
+  }, [date, hasTimeRange, startIdx, endIdx, roomsRaw]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadBusySlotsForSelectedRoom() {
+      if (!selected?.id || !date) {
+        setBusySlotByIndex({});
+        return;
+      }
+
+      const roomId = getReservationRoomId(selected);
+      if (!roomId) {
+        setBusySlotByIndex({});
+        return;
+      }
+
+      try {
+        const data = await reservationsAPI.availability(roomId, date);
+        const blocks = Array.isArray(data?.blocks) ? data.blocks : [];
+        if (!ignore) {
+          setBusySlotByIndex(deriveBusySlotByIndex(blocks, date));
+        }
+      } catch {
+        if (!ignore) setBusySlotByIndex({});
+      }
     }
-    return t;
-  }, [canShowRooms, roomsFiltered, floor, date, startIdx, endIdx, hasTimeRange]);
+
+    loadBusySlotsForSelectedRoom();
+    return () => {
+      ignore = true;
+    };
+  }, [selected?.id, date]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadApprovedHours() {
+      if (!isStudent || !date) {
+        setApprovedHoursToday(0);
+        return;
+      }
+
+      try {
+        const rows = await reservationsAPI.list({ date, status: "approved" });
+        const currentEmail = (localStorage.getItem("authEmail") || "").toLowerCase();
+        const ownRows = rows.filter((row) => {
+          const rowEmail = String(row?.user?.email || "").toLowerCase();
+          if (!currentEmail || !rowEmail) return true;
+          return rowEmail === currentEmail;
+        });
+
+        const total = ownRows.reduce((sum, row) => {
+          const start = new Date(row.start || row.startTime || 0).getTime();
+          const end = new Date(row.end || row.endTime || 0).getTime();
+          if (!start || !end || end <= start) return sum;
+          return sum + (end - start) / 3600000;
+        }, 0);
+        if (!ignore) setApprovedHoursToday(total);
+      } catch {
+        if (!ignore) setApprovedHoursToday(0);
+      }
+    }
+
+    loadApprovedHours();
+    return () => {
+      ignore = true;
+    };
+  }, [date, isStudent]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadAddonsByType() {
+      if (!selected?.type) {
+        setAddonOptions([]);
+        setAddonsError("");
+        return;
+      }
+
+      setAddonsLoading(true);
+      setAddonsError("");
+      try {
+        const items = await roomAPI.listAddons(selected.type);
+        if (!ignore) {
+          setAddonOptions(items);
+          const valid = new Set(items.map((a) => a.addOnId));
+          setAddons((prev) => {
+            const next = {};
+            Object.entries(prev).forEach(([id, qty]) => {
+              if (valid.has(id)) next[id] = qty;
+            });
+            return next;
+          });
+        }
+      } catch (err) {
+        if (!ignore) {
+          setAddonOptions([]);
+          setAddonsError(err?.message || "Cannot load add-ons.");
+        }
+      } finally {
+        if (!ignore) setAddonsLoading(false);
+      }
+    }
+
+    loadAddonsByType();
+    return () => {
+      ignore = true;
+    };
+  }, [selected?.type]);
 
   function resetLower() {
     if (isTimeFirst) {
@@ -173,38 +350,43 @@ export default function Booking() {
     setTypeFilter("ทั้งหมด");
     setSelected(null);
     setAddons({});
+    setReservationError("");
+    setCreatedReservationStatus("");
+    setCreatedReservationMessage("");
   }
 
 function onClickSlot(i) {
   if (!date) {
-    // กระพริบเตือน
     setNeedDateHint(true);
-
-    // ปิดเองใน 700ms
     setTimeout(() => setNeedDateHint(false), 700);
     return;
   }
 
   if (slotStart === null || (slotStart !== null && slotEnd !== null)) {
+    if (i >= TIME_POINTS.length - 1) return;
+    if (busySlotByIndex[i]) return;
     setSlotStart(i);
     setSlotEnd(null);
     resetLower();
     return;
   }
-  setSlotEnd(i);
+
+  if (i === slotStart) return;
+  const lo = Math.min(slotStart, i);
+  const hi = Math.max(slotStart, i) - 1;
+  if (hasBusyInRange(lo, hi, busySlotByIndex)) return;
+
+  const normalizedStart = Math.min(slotStart, i);
+  const normalizedEnd = Math.max(slotStart, i);
+  setSlotStart(normalizedStart);
+  setSlotEnd(normalizedEnd);
   resetLower();
 }
 
 
   function handleSelectRoom(room) {
     setSelected(room);
-    const valid = ADDONS_BY_TYPE[room.type] || [];
-    const validIds = new Set(valid.map((a) => a.id));
-    const next = {};
-    Object.entries(addons).forEach(([id, qty]) => {
-      if (validIds.has(id)) next[id] = qty;
-    });
-    setAddons(next);
+    setAddons({});
   }
 
   // navigate steps
@@ -223,23 +405,43 @@ function onClickSlot(i) {
     }, 220);
   }
 
-  function confirmBooking() {
-    // TODO: ส่ง payload ไป backend / Google Sheet ได้ตรงนี้
-    // ตัวอย่าง payload (ยังไม่ใช้จริง แต่ normalizeAddonsForPayload มีให้แล้ว)
-    /*
-    const payload = {
-      mode,
-      date,
-      timeRange: { startIdx, endIdx, label: timeRangeLabel },
-      floor,
-      floorLabel: FLOOR_LABEL[floor],
-      room: selected,
-      addons: normalizeAddonsForPayload(selected.type, addons),
-    };
-    console.log("BOOKING PAYLOAD", payload);
-    */
+  async function confirmBooking() {
+    if (!selected || !hasDate || !hasTimeRange) return;
 
-    nextStep(); // แสดง overlay success (step 4)
+    setReservationSubmitting(true);
+    setReservationError("");
+
+    try {
+      const roomId = getReservationRoomId(selected);
+      if (!roomId) {
+        setReservationError("Selected room has invalid id for reservation API.");
+        setReservationSubmitting(false);
+        return;
+      }
+
+      const payload = {
+        roomId,
+        start: getPointISO(date, startIdx),
+        end: getPointISO(date, endIdx),
+        note: `Booking (${selected.name})`,
+        addOns: normalizeAddonsForPayload(addons),
+      };
+      const response = await reservationsAPI.create(payload);
+      const status = response?.reservation?.status || "approved";
+
+      setCreatedReservationStatus(status);
+      setCreatedReservationMessage(
+        response?.message ||
+          (status === "pending"
+            ? "Reservation request submitted and pending admin approval"
+            : "Reservation created")
+      );
+      nextStep();
+    } catch (err) {
+      setReservationError(mapReservationError(err));
+    } finally {
+      setReservationSubmitting(false);
+    }
   }
 
   /* ===================== UI ===================== */
@@ -320,18 +522,26 @@ function onClickSlot(i) {
                   />
                 </Card>
                 <Card className="md:col-span-2">
-                  <Label>ช่วงเวลา</Label>
+                  <Label>Time</Label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {SLOTS.map((s, i) => {
+                    {TIME_POINTS.map((point, i) => {
+                      const isLastPoint = i >= TIME_POINTS.length - 1;
+                      const isBusySlot = !isLastPoint && !!busySlotByIndex[i];
+                      const isEndOnlyPoint = isLastPoint && slotStart === null;
                       const isSel =
                         (slotStart === i && slotEnd === null) ||
                         (startIdx !== null && endIdx !== null && i >= startIdx && i <= endIdx);
                       return (
                         <button
-                          key={s}
+                          key={point.value}
+                          disabled={isBusySlot || isEndOnlyPoint}
                           onClick={() => onClickSlot(i)}
                           className={`rounded-xl px-3 py-2 text-sm border transition shadow-sm ${
-  needDateHint
+  isBusySlot
+    ? "border-rose-400/60 bg-rose-500/25 text-rose-100 cursor-not-allowed"
+    : isEndOnlyPoint
+    ? "border-white/20 bg-zinc-800/60 text-slate-300 cursor-not-allowed"
+    : needDateHint
     ? "border-red-400 bg-red-500/20 animate-pulse" // ← กระพริบแดง
     : isSel
     ? "border-emerald-400/40 bg-emerald-400/10 shadow-[0_0_12px_rgba(16,185,129,.25)]"
@@ -339,7 +549,7 @@ function onClickSlot(i) {
 }`}
 
                         >
-                          {s}
+                          {point.display}
                         </button>
                       );
                     })}
@@ -350,7 +560,7 @@ function onClickSlot(i) {
                         ช่วงที่เลือก: <b className="text-slate-100">{timeRangeLabel}</b>
                       </>
                     ) : (
-                      "คลิกช่องแรกเพื่อเริ่ม แล้วคลิกอีกช่องเพื่อสิ้นสุด"
+                      "Click one block for start time, then click one block for end time"
                     )}
                     {timeRangeLabel && (
                       <button
@@ -419,56 +629,105 @@ function onClickSlot(i) {
                     </button>
                   ))}
                 </div>
+                <div className="mb-2 grid gap-2 md:grid-cols-2">
+                  <input
+                    value={roomKeyword}
+                    onChange={(e) => setRoomKeyword(e.target.value)}
+                    placeholder="Keyword (name, description, floor, type, location)"
+                    className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                  />
+                  <input
+                    value={locationFilter}
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                    placeholder="Location"
+                    className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="mb-2 grid gap-2 md:grid-cols-2">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                  >
+                    <option value="name">Sort by name</option>
+                    <option value="capacity">Sort by capacity</option>
+                    <option value="floor">Sort by floor</option>
+                    <option value="type">Sort by type</option>
+                    <option value="location">Sort by location</option>
+                  </select>
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value)}
+                    className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                  >
+                    <option value="asc">ASC</option>
+                    <option value="desc">DESC</option>
+                  </select>
+                </div>
 
                 {!canShowRooms ? (
                   <Card>
                     <div className="text-sm text-slate-300/80">เลือกชั้นก่อนเพื่อดูห้อง</div>
                   </Card>
+                ) : roomsLoading ? (
+                  <Card>
+                    <div className="text-sm text-slate-300/80">กำลังโหลดข้อมูลห้องจาก backend...</div>
+                  </Card>
                 ) : (
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {roomsFiltered.map((room) => {
-                      const busy = availability[room.id]?.busy; // ยังไม่เลือกเวลา → undefined
-                      const isActive = selected?.id === room.id;
-                      return (
-                        <article
-                          key={room.id}
-                          className={`rounded-2xl border p-4 transition backdrop-blur-md ${
-                            isActive
-                              ? "border-emerald-400/50 bg-emerald-400/5"
-                              : "border-white/10 bg-white/[.04] hover:bg-white/[.06]"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <h3 className="font-semibold text-white">{room.name}</h3>
-                              <p className="text-sm text-slate-200/90">
-                                {room.type} · {room.capacity} ที่นั่ง
-                              </p>
-                              {floor && (
-                                <p className="text-xs text-slate-300/80">
-                                  ชั้น {floor} · {FLOOR_LABEL[floor]}
+                  <>
+                    {roomsError && (
+                      <Card className="mb-3 border-amber-300/30 bg-amber-500/10">
+                        <div className="text-sm text-amber-100">
+                          โหลดข้อมูลห้องจาก backend ไม่สำเร็จ: {roomsError}
+                        </div>
+                        <div className="text-xs text-amber-200/80 mt-1">ระบบกำลังใช้ข้อมูลสำรองชั่วคราว</div>
+                      </Card>
+                    )}
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {roomsFiltered.map((room) => {
+                        const busy = availabilityByRoom[room.id]?.busy; // ยังไม่เลือกเวลา → undefined
+                        const isActive = selected?.id === room.id;
+                        return (
+                          <article
+                            key={room.id}
+                            className={`rounded-2xl border p-4 transition backdrop-blur-md ${
+                              isActive
+                                ? "border-emerald-400/50 bg-emerald-400/5"
+                                : "border-white/10 bg-white/[.04] hover:bg-white/[.06]"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <h3 className="font-semibold text-white">{room.name}</h3>
+                                <p className="text-sm text-slate-200/90">
+                                  {room.type} · {room.capacity} ที่นั่ง
                                 </p>
-                              )}
+                                {floor && (
+                                  <p className="text-xs text-slate-300/80">
+                                    ชั้น {floor} · {FLOOR_LABEL[floor] || `ชั้น ${floor}`}
+                                  </p>
+                                )}
+                              </div>
+                              <Status busy={busy} />
                             </div>
-                            <Status busy={busy} />
-                          </div>
-                          <div className="mt-4 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleSelectRoom(room)}
-                              className={`flex-1 rounded-xl px-4 py-2 text-sm border transition ${
-                                isActive
-                                  ? "border-emerald-400 bg-emerald-400/10"
-                                  : "border-white/20 bg-white/10 hover:bg-white/15"
-                              }`}
-                            >
-                              {isActive ? "เลือกแล้ว" : "เลือกห้องนี้"}
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
+                            <div className="mt-4 flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleSelectRoom(room)}
+                                className={`flex-1 rounded-xl px-4 py-2 text-sm border transition ${
+                                  isActive
+                                    ? "border-emerald-400 bg-emerald-400/10"
+                                    : "border-white/20 bg-white/10 hover:bg-white/15"
+                                }`}
+                              >
+                                {isActive ? "เลือกแล้ว" : "เลือกห้องนี้"}
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -538,18 +797,26 @@ function onClickSlot(i) {
                   />
                 </Card>
                 <Card className="md:col-span-2">
-                  <Label>ช่วงเวลา</Label>
+                  <Label>Time</Label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {SLOTS.map((s, i) => {
+                    {TIME_POINTS.map((point, i) => {
+                      const isLastPoint = i >= TIME_POINTS.length - 1;
+                      const isBusySlot = !isLastPoint && !!busySlotByIndex[i];
+                      const isEndOnlyPoint = isLastPoint && slotStart === null;
                       const isSel =
                         (slotStart === i && slotEnd === null) ||
                         (startIdx !== null && endIdx !== null && i >= startIdx && i <= endIdx);
                       return (
                         <button
-                          key={s}
+                          key={point.value}
+                          disabled={isBusySlot || isEndOnlyPoint}
                           onClick={() => onClickSlot(i)}
                           className={`rounded-xl px-3 py-2 text-sm border transition shadow-sm ${
-  (!date && needDateHint)
+  isBusySlot
+    ? "border-rose-400/60 bg-rose-500/25 text-rose-100 cursor-not-allowed"
+    : isEndOnlyPoint
+    ? "border-white/20 bg-zinc-800/60 text-slate-300 cursor-not-allowed"
+    : (!date && needDateHint)
     ? "border-red-400 bg-red-500/20 animate-pulse"
     : isSel
     ? "border-emerald-400/40 bg-emerald-400/10 shadow-[0_0_12px_rgba(16,185,129,.25)]"
@@ -557,7 +824,7 @@ function onClickSlot(i) {
 }`}
 
                         >
-                          {s}
+                          {point.display}
                         </button>
                       );
                     })}
@@ -568,7 +835,7 @@ function onClickSlot(i) {
                         ช่วงที่เลือก: <b className="text-slate-100">{timeRangeLabel}</b>
                       </>
                     ) : (
-                      "คลิกช่องแรกเพื่อเริ่ม แล้วคลิกอีกช่องเพื่อสิ้นสุด"
+                      "Click one block for start time, then click one block for end time"
                     )}
                     {timeRangeLabel && (
                       <button
@@ -620,6 +887,41 @@ function onClickSlot(i) {
                       </button>
                     ))}
                   </div>
+                  <div className="mb-2 grid gap-2 md:grid-cols-2">
+                    <input
+                      value={roomKeyword}
+                      onChange={(e) => setRoomKeyword(e.target.value)}
+                      placeholder="Keyword (name, description, floor, type, location)"
+                      className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                    />
+                    <input
+                      value={locationFilter}
+                      onChange={(e) => setLocationFilter(e.target.value)}
+                      placeholder="Location"
+                      className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="mb-2 grid gap-2 md:grid-cols-2">
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                    >
+                      <option value="name">Sort by name</option>
+                      <option value="capacity">Sort by capacity</option>
+                      <option value="floor">Sort by floor</option>
+                      <option value="type">Sort by type</option>
+                      <option value="location">Sort by location</option>
+                    </select>
+                    <select
+                      value={sortOrder}
+                      onChange={(e) => setSortOrder(e.target.value)}
+                      className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                    >
+                      <option value="asc">ASC</option>
+                      <option value="desc">DESC</option>
+                    </select>
+                  </div>
 
                   {/* Filters */}
                   <div className="grid gap-4 md:grid-cols-3">
@@ -662,55 +964,69 @@ function onClickSlot(i) {
                         เลือก <b>วัน–ช่วงเวลา</b> และ <b>ชั้น</b> ก่อน
                       </div>
                     </Card>
+                  ) : roomsLoading ? (
+                    <Card>
+                      <div className="text-sm text-slate-300/80">กำลังโหลดข้อมูลห้องจาก backend...</div>
+                    </Card>
                   ) : (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {roomsFiltered.map((room) => {
-                        const busy = availability[room.id]?.busy;
-                        const isActive = selected?.id === room.id;
-                        return (
-                          <article
-                            key={room.id}
-                            className={`rounded-2xl border p-4 transition backdrop-blur-md ${
-                              isActive
-                                ? "border-emerald-400/50 bg-emerald-400/5"
-                                : "border-white/10 bg-white/[.04] hover:bg-white/[.06]"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <h3 className="font-semibold text-white">{room.name}</h3>
-                                <p className="text-sm text-slate-200/90">
-                                  {room.type} · {room.capacity} ที่นั่ง
-                                </p>
-                                {date && hasTimeRange && (
-                                  <p className="text-xs text-slate-300/80">
-                                    {formatDate(date)} · {timeRangeLabel} · ชั้น {floor} ·{" "}
-                                    {FLOOR_LABEL[floor]}
+                    <>
+                      {roomsError && (
+                        <Card className="mb-3 border-amber-300/30 bg-amber-500/10">
+                          <div className="text-sm text-amber-100">
+                            โหลดข้อมูลห้องจาก backend ไม่สำเร็จ: {roomsError}
+                          </div>
+                          <div className="text-xs text-amber-200/80 mt-1">ระบบกำลังใช้ข้อมูลสำรองชั่วคราว</div>
+                        </Card>
+                      )}
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {roomsFiltered.map((room) => {
+                          const busy = availabilityByRoom[room.id]?.busy;
+                          const isActive = selected?.id === room.id;
+                          return (
+                            <article
+                              key={room.id}
+                              className={`rounded-2xl border p-4 transition backdrop-blur-md ${
+                                isActive
+                                  ? "border-emerald-400/50 bg-emerald-400/5"
+                                  : "border-white/10 bg-white/[.04] hover:bg-white/[.06]"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <h3 className="font-semibold text-white">{room.name}</h3>
+                                  <p className="text-sm text-slate-200/90">
+                                    {room.type} · {room.capacity} ที่นั่ง
                                   </p>
-                                )}
+                                  {date && hasTimeRange && (
+                                    <p className="text-xs text-slate-300/80">
+                                      {formatDate(date)} · {timeRangeLabel} · ชั้น {floor} ·{" "}
+                                      {FLOOR_LABEL[floor] || `ชั้น ${floor}`}
+                                    </p>
+                                  )}
+                                </div>
+                                <Status busy={busy} />
                               </div>
-                              <Status busy={busy} />
-                            </div>
-                            <div className="mt-4 flex gap-2">
-                              <button
-                                type="button"
-                                disabled={busy}
-                                onClick={() => handleSelectRoom(room)}
-                                className={`flex-1 rounded-xl px-4 py-2 text-sm border transition ${
-                                  busy
-                                    ? "border-white/10 bg-zinc-900/70 text-slate-500 cursor-not-allowed"
-                                    : isActive
-                                    ? "border-emerald-400 bg-emerald-400/10"
-                                    : "border-white/20 bg-white/10 hover:bg-white/15"
-                                }`}
-                              >
-                                {busy ? "ไม่ว่าง" : isActive ? "เลือกแล้ว" : "เลือกห้องนี้"}
-                              </button>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
+                              <div className="mt-4 flex gap-2">
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleSelectRoom(room)}
+                                  className={`flex-1 rounded-xl px-4 py-2 text-sm border transition ${
+                                    busy
+                                      ? "border-white/10 bg-zinc-900/70 text-slate-500 cursor-not-allowed"
+                                      : isActive
+                                      ? "border-emerald-400 bg-emerald-400/10"
+                                      : "border-white/20 bg-white/10 hover:bg-white/15"
+                                  }`}
+                                >
+                                  {busy ? "ไม่ว่าง" : isActive ? "เลือกแล้ว" : "เลือกห้องนี้"}
+                                </button>
+                              </div>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </>
                   )}
                 </>
               )}
@@ -724,8 +1040,12 @@ function onClickSlot(i) {
                       ? "เลือกห้องก่อนเพื่อดู Add-ons ที่เหมาะสม"
                       : "คุณเลือกห้องแล้ว เลือก Add-ons เพิ่มได้เลย"}
                   </div>
+                ) : addonsLoading ? (
+                  <div className="text-sm text-slate-400">Loading add-ons...</div>
+                ) : addonsError ? (
+                  <div className="text-sm text-rose-300">{addonsError}</div>
                 ) : (
-                  <AddonSelector roomType={selected.type} values={addons} onChange={setAddons} />
+                  <AddonSelector items={addonOptions} values={addons} onChange={setAddons} />
                 )}
               </Card>
 
@@ -745,18 +1065,30 @@ function onClickSlot(i) {
                   <p className="text-sm text-slate-300">
                     Add-ons:{" "}
                     {Object.keys(addons).length
-                      ? Object.entries(addons)
-                          .map(([id, qty]) => `${qty}× ${id}`)
+                      ? normalizeAddonsForPayload(addons)
+                          .map((a) => `${a.qty}× ${a.addOnId}`)
                           .join(", ")
                       : "ไม่มี"}
                   </p>
+                  {availabilityLoading && (
+                    <p className="text-xs text-slate-400 mt-2">Checking live availability...</p>
+                  )}
+                  {isStudent && (
+                    <p className={`text-xs mt-2 ${exceedsStudentDailyLimit ? "text-amber-300" : "text-slate-400"}`}>
+                      Approved hours today: {approvedHoursToday}h. Selected: {selectedHours}h.
+                      {exceedsStudentDailyLimit
+                        ? " Total exceeds 2h/day. This reservation will require admin approval."
+                        : " Within 2h/day, it can be auto approved."}
+                    </p>
+                  )}
+                  {reservationError && <p className="text-xs mt-2 text-rose-300">{reservationError}</p>}
                 </div>
               )}
 
               <StepActions>
                 <BackButton onClick={backStep} />
                 <button
-                  disabled={!selected || !hasDate || !hasTimeRange}
+                  disabled={!selected || !hasDate || !hasTimeRange || reservationSubmitting}
                   onClick={confirmBooking}
                   className={`px-6 py-2 rounded-xl text-black font-medium transition ${
                     selected && hasDate && hasTimeRange
@@ -764,7 +1096,11 @@ function onClickSlot(i) {
                       : "bg-zinc-700 text-slate-400 cursor-not-allowed"
                   }`}
                 >
-                  ยืนยันการจอง
+                  {reservationSubmitting
+                    ? "Submitting..."
+                    : isStudent && exceedsStudentDailyLimit
+                    ? "Request approval"
+                    : "Reserve"}
                 </button>
               </StepActions>
             </Section>
@@ -790,8 +1126,13 @@ function onClickSlot(i) {
                 </svg>
               </div>
             </div>
-            <h2 className="mt-6 text-3xl font-bold text-emerald-400 drop-shadow">จองสำเร็จ!</h2>
-            <p className="mt-1 text-slate-300">บันทึกข้อมูลการจองเรียบร้อย</p>
+            <h2 className="mt-6 text-3xl font-bold text-emerald-400 drop-shadow">
+              {createdReservationStatus === "pending" ? "Request Submitted" : "Reservation Success"}
+            </h2>
+            <p className="mt-1 text-slate-300">{createdReservationMessage || "Booking saved."}</p>
+            <p className="mt-2 text-xs text-slate-400">
+              Status: <span className="font-semibold">{createdReservationStatus || "approved"}</span>
+            </p>
 
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
               <button
@@ -967,10 +1308,9 @@ function StepActions({ children }) {
 }
 
 /* ---------- Addon Selector ---------- */
-function AddonSelector({ roomType, values, onChange }) {
-  const items = ADDONS_BY_TYPE[roomType] || [];
+function AddonSelector({ items = [], values, onChange }) {
   function setQty(id, next) {
-    const def = items.find((a) => a.id === id);
+    const def = items.find((a) => a.addOnId === id);
     if (!def) return;
     const v = Math.max(0, Math.min(def.max, Number(next) || 0));
     onChange({ ...values, [id]: v });
@@ -984,10 +1324,10 @@ function AddonSelector({ roomType, values, onChange }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((a) => {
-        const v = values[a.id] || 0;
+        const v = values[a.addOnId] || 0;
         return (
           <div
-            key={a.id}
+            key={a.addOnId}
             className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2"
           >
             <div>
@@ -999,19 +1339,19 @@ function AddonSelector({ roomType, values, onChange }) {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => dec(a.id)}
+                onClick={() => dec(a.addOnId)}
                 className="w-8 h-8 grid place-items-center rounded-lg border border-white/10 bg-white/10 hover:bg-white/20"
               >
                 −
               </button>
               <input
                 value={v}
-                onChange={(e) => setQty(a.id, e.target.value)}
+                onChange={(e) => setQty(a.addOnId, e.target.value)}
                 className="w-14 text-center rounded-lg bg-zinc-900 border border-white/10 py-1"
               />
               <button
                 type="button"
-                onClick={() => inc(a.id)}
+                onClick={() => inc(a.addOnId)}
                 className="w-8 h-8 grid place-items-center rounded-lg border border-white/10 bg-white/10 hover:bg-white/20"
               >
                 +
@@ -1077,19 +1417,99 @@ function FancyDate({ value, onChange, min }) {
 }
 
 /* ---------- Helpers ---------- */
-function isBusyRange(floor, isoDate, roomId, startIdx, endIdx) {
-  for (let i = startIdx; i <= endIdx; i++) {
-    const slotLabel = SLOTS[i];
-    const seed = hash(`${floor}|${isoDate}|${roomId}|${slotLabel}`);
+function buildHourlySlots(startTime, endTime) {
+  const slots = [];
+  const start = toMinute(startTime);
+  const end = toMinute(endTime);
+  for (let t = start; t + 60 <= end; t += 60) {
+    const startLabel = minuteToLabel(t);
+    const endLabel = minuteToLabel(t + 60);
+    const startDisplay = toDotTime(startLabel);
+    const endDisplay = toDotTime(endLabel);
+    slots.push({
+      start: startLabel,
+      end: endLabel,
+      startLabel,
+      endLabel,
+      startDisplay,
+      endDisplay,
+      label: `${startDisplay} - ${endDisplay}`,
+    });
+  }
+  return slots;
+}
 
-    const hour = Number(slotLabel.slice(0, 2)); // 08, 09, 10...
+function buildTimePoints(startTime, endTime) {
+  const points = [];
+  const start = toMinute(startTime);
+  const end = toMinute(endTime);
+  for (let t = start; t <= end; t += 60) {
+    const label = minuteToLabel(t);
+    points.push({ value: label, display: toDotTime(label) });
+  }
+  return points;
+}
 
-    const v = seed % 100;
-    const base = hour < 12 ? 30 : 45;
+function toDotTime(hhmm) {
+  return hhmm.replace(":", ".");
+}
 
-    if (v < base) return true;
+function toMinute(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minuteToLabel(totalMinute) {
+  const h = Math.floor(totalMinute / 60)
+    .toString()
+    .padStart(2, "0");
+  const m = (totalMinute % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+function getPointISO(dateISO, idx) {
+  return new Date(`${dateISO}T${TIME_POINTS[idx].value}:00`).toISOString();
+}
+
+function hasOverlap(startA, endA, startB, endB) {
+  const a1 = new Date(startA).getTime();
+  const a2 = new Date(endA).getTime();
+  const b1 = new Date(startB).getTime();
+  const b2 = new Date(endB).getTime();
+  return a1 < b2 && b1 < a2;
+}
+
+function deriveBusySlotByIndex(blocks, dateISO) {
+  const map = {};
+  SLOTS.forEach((_, idx) => {
+    const slotStart = getPointISO(dateISO, idx);
+    const slotEnd = getPointISO(dateISO, idx + 1);
+    const busy = blocks.some((block) => {
+      if (block.isFree) return false;
+      return hasOverlap(slotStart, slotEnd, block.start, block.end);
+    });
+    if (busy) map[idx] = true;
+  });
+  return map;
+}
+
+function hasBusyInRange(startIndex, endIndex, busyMap) {
+  if (startIndex === null || endIndex === null) return false;
+  for (let i = startIndex; i <= endIndex; i++) {
+    if (busyMap?.[i]) return true;
   }
   return false;
+}
+
+function getReservationRoomId(room) {
+  if (!room) return "";
+  if (isMongoObjectId(room.reservationRoomId)) return room.reservationRoomId;
+  if (isMongoObjectId(room.id)) return room.id;
+  return "";
+}
+
+function isMongoObjectId(value) {
+  return typeof value === "string" && /^[a-f\d]{24}$/i.test(value);
 }
 
 function formatDate(iso) {
@@ -1097,18 +1517,19 @@ function formatDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString("th-TH", { day: "2-digit", month: "short", year: "numeric" });
 }
-function hash(str) {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-function normalizeAddonsForPayload(roomType, values) {
-  const defs = ADDONS_BY_TYPE[roomType] || [];
-  const map = Object.fromEntries(defs.map((a) => [a.id, a]));
+function normalizeAddonsForPayload(values) {
   return Object.entries(values)
-    .filter(([id, qty]) => qty > 0 && map[id])
-    .map(([id, qty]) => ({ id, label: map[id].label, qty, unit: map[id].unit }));
+    .filter(([, qty]) => qty > 0)
+    .map(([addOnId, qty]) => ({ addOnId, qty: Number(qty) }));
+}
+
+function mapReservationError(err) {
+  const message = String(err?.message || "");
+  if (/401|unauthorized/i.test(message)) return "Unauthorized. Please login again.";
+  if (/already booked|time slot already booked|overlap/i.test(message)) return "This slot is already reserved.";
+  if (/must be on|:30|time blocks/i.test(message)) return "Start/end must be on :30 time blocks.";
+  if (/07:30|20:30|available only between/i.test(message)) {
+    return "Room available only between 07:30 and 20:30.";
+  }
+  return message || "Cannot create reservation right now.";
 }

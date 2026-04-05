@@ -14,10 +14,10 @@ export const authAPI = {
   /**
    * Get current user info
    */
-  me: () => apiFetch("/auth/me"),
+  me: () => apiFetch("/auth/me", { withCredentials: true }),
 
   /**
    * Logout user
    */
-  logout: () => apiFetch("/auth/logout", { method: "POST" }),
+  logout: () => apiFetch("/auth/logout", { method: "POST", withCredentials: true }),
 };

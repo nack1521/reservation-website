@@ -4,6 +4,8 @@ import SiteLayout from "./layouts/SiteLayout.jsx";
 import Home from "./pages/Home.jsx";
 import Booking from "./pages/Booking.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
+import AdminDashboard from "./pages/AdminDashboard.jsx";
+import AdminRooms from "./pages/AdminRooms.jsx";
 import Success from "./pages/Success.jsx";
 import Login from "./pages/Login.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -36,6 +38,8 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/book" element={<Booking />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/admin-dashboard" element={<AdminDashboard />} />
+            <Route path="/admin-rooms" element={<AdminRooms />} />
             <Route path="/success" element={<Success />} />
             <Route path="/user-guide" element={<UserGuide />} />
             <Route path="/profile" element={<Profile />} />

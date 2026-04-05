@@ -1,10 +1,26 @@
 // src/layouts/SiteLayout.jsx
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
+import { authAPI } from "../services/api.googleAuth.js";
 
 export default function SiteLayout() {
   const nav = useNavigate();
   const loc = useLocation();
+
+  function clearAuthAndRedirect() {
+    localStorage.removeItem("auth");
+    localStorage.removeItem("authUser");
+    localStorage.removeItem("authAt");
+    localStorage.removeItem("authEmail");
+    localStorage.removeItem("authPicture");
+    localStorage.removeItem("authRole");
+    nav("/login", { replace: true });
+  }
+
+  function isUnauthorizedError(err) {
+    const message = String(err?.message || "");
+    return /401|unauthorized/i.test(message);
+  }
 
   // ถ้ายังไม่ได้ล็อกอิน และไม่ใช่หน้า /login → ส่งไป /login
   useEffect(() => {
@@ -13,6 +29,45 @@ export default function SiteLayout() {
       nav("/login", { replace: true });
     }
   }, [loc.pathname, nav]);
+
+  useEffect(() => {
+    let stopped = false;
+
+    async function checkSession() {
+      if (stopped) return;
+      const authed = localStorage.getItem("auth") === "true";
+      if (!authed) return;
+
+      try {
+        await authAPI.me();
+      } catch (err) {
+        if (isUnauthorizedError(err)) {
+          clearAuthAndRedirect();
+        }
+      }
+    }
+
+    function onAuthExpired() {
+      clearAuthAndRedirect();
+    }
+
+    function onVisible() {
+      if (document.visibilityState === "visible") checkSession();
+    }
+
+    window.addEventListener("auth:expired", onAuthExpired);
+    document.addEventListener("visibilitychange", onVisible);
+
+    checkSession();
+    const id = window.setInterval(checkSession, 60 * 1000);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+      window.removeEventListener("auth:expired", onAuthExpired);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [nav]);
 
   return (
     <div className="min-h-screen flex flex-col bg-animated bg-glow text-white">
@@ -32,6 +87,7 @@ export default function SiteLayout() {
             <NavItem to="/">Home</NavItem>
             <NavItem to="/book">Rooms</NavItem>
             <NavItem to="/dashboard">Dashboard</NavItem>
+            <NavItem to="/admin-dashboard">Admin</NavItem>
             <NavItem to="/user-guide">User Guide</NavItem>
           </div>
 
@@ -116,6 +172,7 @@ function UserProfile() {
     localStorage.removeItem("authUser");
     localStorage.removeItem("authAt");
     localStorage.removeItem("authEmail");
+    localStorage.removeItem("authRole");
     nav("/login", { replace: true });
   }
 

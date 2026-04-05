@@ -19,6 +19,7 @@ export default function Login() {
       localStorage.setItem("auth", "true");
       localStorage.setItem("authUser", data.user.name);
       localStorage.setItem("authEmail", data.user.email);
+      localStorage.setItem("authRole", data.user.role || "student");
       if (data.user.picture) {
         localStorage.setItem("authPicture", data.user.picture);
       }
@@ -81,6 +82,7 @@ export default function Login() {
       localStorage.setItem("auth", "true");
       localStorage.setItem("authUser", user.name);
       localStorage.setItem("authEmail", user.email);
+      localStorage.setItem("authRole", user.role || "student");
       if (user.picture) localStorage.setItem("authPicture", user.picture);
 
       setStatus("success");
