@@ -1,6 +1,7 @@
 // src/pages/Home.jsx
 import { Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { reservationsAPI } from "../services/reservations.js";
 
 /* ใช้ชื่อชั้นเพื่อส่งไปหน้า Success เมื่อกด "จองทันที" */
 const FLOOR_LABEL = {
@@ -107,17 +108,17 @@ export default function Home() {
       {/* ===== SHORTCUTS ===== */}
       <ShortcutsGrid />
 
-      {/* ===== QUICK SEARCH + RECOMMENDED ===== */}
+      {/* ===== ANNOUNCEMENTS + NEXT RESERVATION ===== */}
       <section id="quick-search" className="border-t border-white/10 bg-white/5/50">
         <div className="mx-auto max-w-7xl px-6 lg:px-8 py-16">
-          <h2 className="text-lg font-medium text-white">ค้นหาห้องว่างอย่างรวดเร็ว</h2>
+          <h2 className="text-lg font-medium text-white">Announcements + Maintenance</h2>
           <p className="mt-1 text-sm text-slate-400">
-            เลือกวัน/เวลา/ประเภทห้อง แล้วดูผลลัพธ์ตัวอย่างก่อนเข้าไปจองจริง
+            ตรวจสอบประกาศล่าสุดและดูการจองถัดไปของคุณได้ในที่เดียว
           </p>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
-            <QuickSearchCard />
-            <RecommendedDaily onBook={bookNow} />
+          <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
+            <AnnouncementsPanel />
+            <MyNextReservationCard />
           </div>
         </div>
       </section>
@@ -351,6 +352,179 @@ function RecommendedDaily({ onBook }) {
       </p>
     </div>
   );
+}
+
+function AnnouncementsPanel() {
+  const items = [
+    {
+      title: "Room 3 projector maintenance",
+      detail: "Projector service window: 09 Apr 2026, 09:00-12:00",
+      tone: "amber",
+    },
+    {
+      title: "Computer Lab network upgrade",
+      detail: "Temporary unstable internet expected after 18:00 this week",
+      tone: "cyan",
+    },
+    {
+      title: "New role workflow is live",
+      detail: "You can now request Teacher role directly from your profile",
+      tone: "emerald",
+    },
+  ];
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5 backdrop-blur">
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h3 className="text-sm text-slate-200 font-medium">Announcements</h3>
+        <span className="text-[11px] text-slate-400">Updated today</span>
+      </div>
+      <div className="space-y-2.5">
+        {items.map((item) => (
+          <article
+            key={item.title}
+            className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3"
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  item.tone === "amber"
+                    ? "bg-amber-400"
+                    : item.tone === "cyan"
+                    ? "bg-cyan-400"
+                    : "bg-emerald-400"
+                }`}
+              />
+              <h4 className="text-sm font-medium text-white">{item.title}</h4>
+            </div>
+            <p className="mt-1 text-xs text-slate-300/90">{item.detail}</p>
+          </article>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] text-slate-400">
+        Maintenance windows may affect room availability.
+      </p>
+    </div>
+  );
+}
+
+function MyNextReservationCard() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [nextBooking, setNextBooking] = useState(null);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadNextReservation() {
+      setLoading(true);
+      setError("");
+      try {
+        const payload = await reservationsAPI.meDashboard();
+        const upcoming = Array.isArray(payload?.upcoming) ? payload.upcoming : [];
+
+        const normalized = upcoming
+          .map((item) => {
+            const startISO = item?.start || item?.startTime || item?.startsAt || "";
+            const endISO = item?.end || item?.endTime || item?.endsAt || "";
+            const start = new Date(startISO);
+            const end = new Date(endISO);
+            const roomName = item?.room?.name || item?.roomName || "-";
+            return {
+              id: item?.id || item?._id || "",
+              room: roomName,
+              start,
+              end,
+              startISO,
+              endISO,
+            };
+          })
+          .filter((row) => !Number.isNaN(row.start.getTime()))
+          .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+        if (!ignore) setNextBooking(normalized[0] || null);
+      } catch (err) {
+        if (!ignore) {
+          setError(err?.message || "Cannot load next reservation right now.");
+          setNextBooking(null);
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    loadNextReservation();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5 backdrop-blur">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm text-slate-200 font-medium">My Next Reservation</h3>
+        <Link to="/dashboard" className="text-xs text-cyan-300 hover:underline">
+          View all
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="rounded-xl border border-white/10 bg-white/[.04] p-4 text-sm text-slate-300/80">
+          Loading next reservation...
+        </div>
+      ) : error ? (
+        <div className="rounded-xl border border-rose-300/30 bg-rose-500/10 p-4 text-sm text-rose-100">
+          {error}
+        </div>
+      ) : !nextBooking ? (
+        <div className="rounded-xl border border-white/10 bg-white/[.04] p-4 text-sm text-slate-300/80">
+          No upcoming reservation.
+          <div className="mt-3">
+            <Link
+              to="/book"
+              className="inline-flex rounded-lg px-3 py-1.5 bg-white text-black text-xs font-medium hover:opacity-90"
+            >
+              Book now
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-emerald-300/25 bg-emerald-500/10 p-4">
+          <p className="text-xs text-emerald-200/90">Upcoming</p>
+          <p className="text-base font-semibold text-white mt-1">{nextBooking.room}</p>
+          <p className="text-sm text-slate-200 mt-1">
+            {formatDate(nextBooking.start)} · {formatTime(nextBooking.start)}-{formatTime(nextBooking.end)}
+          </p>
+          <div className="mt-3">
+            <Link
+              to="/dashboard"
+              className="inline-flex rounded-lg px-3 py-1.5 border border-white/20 bg-white/10 text-xs font-medium hover:bg-white/15"
+            >
+              Open dashboard
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatTime(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function Field({ label, children }) {

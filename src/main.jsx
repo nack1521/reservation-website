@@ -18,6 +18,7 @@ import Success from "./pages/Success.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import AdminRooms from "./pages/AdminRooms.jsx";
+import AdminTeacherRequests from "./pages/AdminTeacherRequests.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import Login from "./pages/Login.jsx";
 import UserGuide from "./pages/UserGuide.jsx";
@@ -45,8 +46,12 @@ function readRoles() {
     // ignore malformed authRoles value
   }
 
-  const single = String(localStorage.getItem("authRole") || "student").toLowerCase();
-  return single ? [single] : ["student"];
+  const single = String(localStorage.getItem("authRole") || "").toLowerCase().trim();
+  if (single) return [single];
+
+  const email = String(localStorage.getItem("authEmail") || "").toLowerCase().trim();
+  if (email.endsWith("@mail.kmutt.ac.th")) return ["student"];
+  return ["user"];
 }
 
 function isAdminLike() {
@@ -92,6 +97,7 @@ const router = createBrowserRouter([
             children: [
               { path: "/admin-dashboard", element: <AdminDashboard /> },
               { path: "/admin-rooms", element: <AdminRooms /> },
+              { path: "/admin-teacher-requests", element: <AdminTeacherRequests /> },
             ],
           },
           { path: "/user-guide", element: <UserGuide /> },

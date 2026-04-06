@@ -17,6 +17,10 @@ function extractRoles(user = {}) {
 
   if (normalized.length > 0) return normalized;
 
+  if (typeof user.roles === "string" && user.roles.trim()) {
+    return [user.roles.toLowerCase().trim()];
+  }
+
   const single = String(user.role || "").toLowerCase().trim();
   return single ? [single] : ["student"];
 }
@@ -24,7 +28,17 @@ function extractRoles(user = {}) {
 function pickPrimaryRole(roles) {
   if (roles.includes("super_admin")) return "super_admin";
   if (roles.includes("admin")) return "admin";
+  if (roles.includes("teacher")) return "teacher";
+  if (roles.includes("pending")) return "pending";
+  if (roles.includes("student")) return "student";
+  if (roles.includes("user")) return "user";
   return roles[0] || "student";
+}
+
+function inferDefaultRoleByEmail(email) {
+  const normalized = String(email || "").toLowerCase().trim();
+  if (normalized.endsWith("@mail.kmutt.ac.th")) return "student";
+  return "user";
 }
 
 function isAdminApp() {
@@ -46,7 +60,8 @@ export default function Login() {
     try {
       const data = await authAPI.me();
       const user = data?.user && typeof data.user === "object" ? data.user : (data || {});
-      const roles = extractRoles(user);
+      const extractedRoles = extractRoles(user);
+      const roles = extractedRoles.length ? extractedRoles : [inferDefaultRoleByEmail(user?.email)];
       const role = pickPrimaryRole(roles);
 
       if (isAdminApp() && !isAdminRole(role)) {

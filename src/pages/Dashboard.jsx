@@ -70,7 +70,7 @@ export default function Dashboard() {
   const kpiHistory = summary.history;
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
+    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white flex flex-col">
       <div className="mx-auto max-w-7xl px-6 lg:px-8 py-8 space-y-8">
         {/* Header + CTA */}
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -184,7 +184,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <footer className="py-8 text-center text-xs text-slate-500 border-t border-white/10">
+      <footer className="py-8 text-center text-xs text-slate-500 border-t border-white/10 mt-auto">
         © {new Date().getFullYear()} FIET Bookings
       </footer>
     </div>

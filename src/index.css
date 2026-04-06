@@ -1,6 +1,21 @@
 /* ✅ Tailwind v4 ใช้ @import ไม่ใช่ @tailwind ... */
 @import "tailwindcss";
 
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    width: 100%;
+  }
+
+  html,
+  body {
+    overflow-x: hidden;
+    background: #020617;
+  }
+}
+
 /* (ไม่จำเป็น แต่ช่วยเรื่องลำดับและ purge)
    เอาคลาส custom ใส่ layer utilities จะปลอดภัยกว่า */
 @layer utilities {
@@ -37,6 +52,11 @@
     right: -150px;
     background: radial-gradient(circle, rgba(59,130,246,0.4), transparent 70%);
     animation-delay: -9s;
+  }
+
+  .bg-glow {
+    position: relative;
+    overflow: hidden;
   }
 }
 

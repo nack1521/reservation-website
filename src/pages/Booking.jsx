@@ -38,7 +38,7 @@ function roomsOfFloor(floor) {
 /* ===================== PAGE ===================== */
 export default function Booking() {
   const navigate = useNavigate();
-  const today = new Date().toISOString().slice(0, 10);
+  const todayISO = getTodayISO();
   const [needDateHint, setNeedDateHint] = useState(false);
 
   // Step control (1–4)
@@ -51,7 +51,7 @@ export default function Booking() {
   const isTimeFirst = mode === "time-first";
 
   // Step 1 / 2
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(todayISO);
   const [slotStart, setSlotStart] = useState(null);
   const [slotEnd, setSlotEnd] = useState(null);
 
@@ -88,7 +88,10 @@ export default function Booking() {
 
   const hasDate = !!date;
   const hasTimeRange = slotStart !== null && slotEnd !== null;
-  const userRole = (localStorage.getItem("authRole") || "student").toLowerCase();
+  const storedRole = String(localStorage.getItem("authRole") || "").toLowerCase().trim();
+  const storedEmail = String(localStorage.getItem("authEmail") || "").toLowerCase().trim();
+  const inferredDefaultRole = storedEmail.endsWith("@mail.kmutt.ac.th") ? "student" : "user";
+  const userRole = storedRole || inferredDefaultRole;
   const isStudent = !["teacher", "admin", "super_admin"].includes(userRole);
 
   // เงื่อนไขไป step ต่อไป แยกตามโหมด
@@ -105,9 +108,15 @@ export default function Booking() {
 
   const startIdx = hasTimeRange ? Math.min(slotStart, slotEnd) : null;
   const endIdx = hasTimeRange ? Math.max(slotStart, slotEnd) : null;
+  const minSelectableStartIdx = getMinSelectableStartIndex(date, todayISO);
+  const minSelectableStartLabel =
+    minSelectableStartIdx < TIME_POINTS.length - 1 ? TIME_POINTS[minSelectableStartIdx].display : null;
   const timeRangeLabel = hasTimeRange
     ? `Start ${TIME_POINTS[startIdx].display} · End ${TIME_POINTS[endIdx].display}`
     : "";
+  const stepLabels = isTimeFirst
+    ? ["Date & Time", "Floor / Dept", "Room & Add-ons", "Success"]
+    : ["Floor & Room", "Date & Time", "Add-ons & Confirm", "Success"];
   const selectedHours = hasTimeRange ? endIdx - startIdx : 0;
   const exceedsStudentDailyLimit = isStudent && approvedHoursToday + selectedHours > 2;
 
@@ -342,7 +351,7 @@ export default function Booking() {
 
   function resetAll() {
     setStep(1);
-    setDate("");
+    setDate(todayISO);
     setSlotStart(null);
     setSlotEnd(null);
     setFloor("");
@@ -355,33 +364,34 @@ export default function Booking() {
     setCreatedReservationMessage("");
   }
 
-function onClickSlot(i) {
-  if (!date) {
-    setNeedDateHint(true);
-    setTimeout(() => setNeedDateHint(false), 700);
-    return;
-  }
+  function onClickSlot(i) {
+    if (!date) {
+      setNeedDateHint(true);
+      setTimeout(() => setNeedDateHint(false), 700);
+      return;
+    }
 
-  if (slotStart === null || (slotStart !== null && slotEnd !== null)) {
-    if (i >= TIME_POINTS.length - 1) return;
-    if (busySlotByIndex[i]) return;
-    setSlotStart(i);
-    setSlotEnd(null);
+    if (slotStart === null || (slotStart !== null && slotEnd !== null)) {
+      if (i >= TIME_POINTS.length - 1) return;
+      if (i < minSelectableStartIdx) return;
+      if (busySlotByIndex[i]) return;
+      setSlotStart(i);
+      setSlotEnd(null);
+      resetLower();
+      return;
+    }
+
+    if (i === slotStart) return;
+    const lo = Math.min(slotStart, i);
+    const hi = Math.max(slotStart, i) - 1;
+    if (hasBusyInRange(lo, hi, busySlotByIndex)) return;
+
+    const normalizedStart = Math.min(slotStart, i);
+    const normalizedEnd = Math.max(slotStart, i);
+    setSlotStart(normalizedStart);
+    setSlotEnd(normalizedEnd);
     resetLower();
-    return;
   }
-
-  if (i === slotStart) return;
-  const lo = Math.min(slotStart, i);
-  const hi = Math.max(slotStart, i) - 1;
-  if (hasBusyInRange(lo, hi, busySlotByIndex)) return;
-
-  const normalizedStart = Math.min(slotStart, i);
-  const normalizedEnd = Math.max(slotStart, i);
-  setSlotStart(normalizedStart);
-  setSlotEnd(normalizedEnd);
-  resetLower();
-}
 
 
   function handleSelectRoom(room) {
@@ -446,22 +456,20 @@ function onClickSlot(i) {
 
   /* ===================== UI ===================== */
   return (
-    <div className="relative min-h-screen bg-animated bg-glow overflow-hidden text-white">
+    <div className="relative min-h-screen flex flex-col bg-animated bg-glow overflow-x-hidden text-white">
       {/* Header + Stepper */}
-      <div className="mx-auto max-w-6xl px-4 pt-8">
+      <div className="mx-auto max-w-6xl w-full px-4 pt-6 md:pt-8">
         <div className="flex flex-col items-center text-center">
-          <Stepper
+          <div className="w-full md:hidden">
+            <Stepper
             step={step}
             total={totalSteps}
-            labels={
-              isTimeFirst
-                ? ["Date & Time", "Floor / Dept", "Room & Add-ons", "Success"]
-                : ["Floor & Room", "Date & Time", "Add-ons & Confirm", "Success"]
-            }
-          />
+            labels={stepLabels}
+            />
+          </div>
 
           {/* ปุ่มเลือกโหมด */}
-          <div className="mt-4 flex gap-2 text-xs">
+          <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs">
             <button
               onClick={() => {
                 setMode("time-first");
@@ -493,28 +501,32 @@ function onClickSlot(i) {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 mx-auto max-w-6xl px-4 py-6">
-        <div
-          className={`transition-all duration-500 ${
-            fade ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
-          }`}
-        >
+      <div className="relative z-10 mx-auto max-w-6xl w-full px-4 py-6 flex-1">
+        <div className="md:grid md:grid-cols-[220px_1fr] md:gap-4 lg:gap-6 h-full">
+          <aside className="hidden md:block">
+            <StepSidebar step={step} labels={stepLabels} />
+          </aside>
+
+          <div
+            className={`transition-all duration-500 ${
+              fade ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+            }`}
+          >
           {/* STEP 1 */}
           {step === 1 && isTimeFirst && (
             <Section title="ขั้นที่ 1 · เลือกวันและช่วงเวลา">
               <p className="text-xs text-slate-400 mb-2">
-                เลือกวันที่และช่วงเวลาที่ต้องการจอง (คลิกเริ่ม–สิ้นสุด)
+                เลือกวันจากปฏิทิน (วันนี้และวันถัดไป) และเลือกช่วงเวลา
               </p>
               <div className="grid gap-4 md:grid-cols-3">
                 <Card className={`md:col-span-1 transition-all ${
-  needDateHint ? "ring-2 ring-emerald-400 shadow-[0_0_15px_rgba(16,185,129,.6)]" : ""
-}`}>
-
+                  needDateHint ? "ring-2 ring-emerald-400 shadow-[0_0_15px_rgba(16,185,129,.6)]" : ""
+                }`}>
                   <FancyDate
                     value={date}
-                    min={today}
+                    min={todayISO}
                     onChange={(iso) => {
-                      setDate(iso);
+                      setDate(iso || todayISO);
                       setSlotStart(null);
                       setSlotEnd(null);
                       resetLower();
@@ -527,6 +539,7 @@ function onClickSlot(i) {
                     {TIME_POINTS.map((point, i) => {
                       const isLastPoint = i >= TIME_POINTS.length - 1;
                       const isBusySlot = !isLastPoint && !!busySlotByIndex[i];
+                      const isTooSoonSlot = !isLastPoint && i < minSelectableStartIdx;
                       const isEndOnlyPoint = isLastPoint && slotStart === null;
                       const isSel =
                         (slotStart === i && slotEnd === null) ||
@@ -534,20 +547,21 @@ function onClickSlot(i) {
                       return (
                         <button
                           key={point.value}
-                          disabled={isBusySlot || isEndOnlyPoint}
+                          disabled={isBusySlot || isEndOnlyPoint || isTooSoonSlot}
                           onClick={() => onClickSlot(i)}
                           className={`rounded-xl px-3 py-2 text-sm border transition shadow-sm ${
-  isBusySlot
-    ? "border-rose-400/60 bg-rose-500/25 text-rose-100 cursor-not-allowed"
-    : isEndOnlyPoint
-    ? "border-white/20 bg-zinc-800/60 text-slate-300 cursor-not-allowed"
-    : needDateHint
-    ? "border-red-400 bg-red-500/20 animate-pulse" // ← กระพริบแดง
-    : isSel
-    ? "border-emerald-400/40 bg-emerald-400/10 shadow-[0_0_12px_rgba(16,185,129,.25)]"
-    : "border-white/10 bg-zinc-900/80 hover:bg-zinc-800/80"
-}`}
-
+                            isBusySlot
+                              ? "border-rose-400/60 bg-rose-500/25 text-rose-100 cursor-not-allowed"
+                              : isTooSoonSlot
+                              ? "border-amber-400/60 bg-amber-500/20 text-amber-100 cursor-not-allowed"
+                              : isEndOnlyPoint
+                              ? "border-white/20 bg-zinc-800/60 text-slate-300 cursor-not-allowed"
+                              : needDateHint
+                              ? "border-red-400 bg-red-500/20 animate-pulse"
+                              : isSel
+                              ? "border-emerald-400/40 bg-emerald-400/10 shadow-[0_0_12px_rgba(16,185,129,.25)]"
+                              : "border-white/10 bg-zinc-900/80 hover:bg-zinc-800/80"
+                          }`}
                         >
                           {point.display}
                         </button>
@@ -575,6 +589,11 @@ function onClickSlot(i) {
                       </button>
                     )}
                   </div>
+                  {date === todayISO && (
+                    <div className="mt-1 text-xs text-amber-200/90">
+                      วันนี้เลือกได้ตั้งแต่ {minSelectableStartLabel || "ไม่มีช่วงเวลาที่จองได้แล้ว"} (บล็อกเวลาปัจจุบัน + 1 ชั่วโมง)
+                    </div>
+                  )}
                 </Card>
               </div>
 
@@ -773,23 +792,21 @@ function onClickSlot(i) {
           {step === 2 && !isTimeFirst && (
             <Section title="ขั้นที่ 2 · เลือกวันและช่วงเวลา">
               <p className="text-xs text-slate-400 mb-2">
-                เลือกวันที่และช่วงเวลาที่ต้องการจองสำหรับห้อง {selected?.name || "-"}
+                เลือกวันจากปฏิทินสำหรับห้อง {selected?.name || "-"} (วันนี้และวันถัดไป)
               </p>
               <div className="grid gap-4 md:grid-cols-3">
                 <Card
-  className={`md:col-span-1 transition-all ${
-    needDateHint && !date
-      ? "ring-2 ring-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.6)]"
-      : ""
-  }`}
->
-
-
+                  className={`md:col-span-1 transition-all ${
+                    needDateHint && !date
+                      ? "ring-2 ring-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.6)]"
+                      : ""
+                  }`}
+                >
                   <FancyDate
                     value={date}
-                    min={today}
+                    min={todayISO}
                     onChange={(iso) => {
-                      setDate(iso);
+                      setDate(iso || todayISO);
                       setSlotStart(null);
                       setSlotEnd(null);
                       resetLower();
@@ -802,6 +819,7 @@ function onClickSlot(i) {
                     {TIME_POINTS.map((point, i) => {
                       const isLastPoint = i >= TIME_POINTS.length - 1;
                       const isBusySlot = !isLastPoint && !!busySlotByIndex[i];
+                      const isTooSoonSlot = !isLastPoint && i < minSelectableStartIdx;
                       const isEndOnlyPoint = isLastPoint && slotStart === null;
                       const isSel =
                         (slotStart === i && slotEnd === null) ||
@@ -809,20 +827,21 @@ function onClickSlot(i) {
                       return (
                         <button
                           key={point.value}
-                          disabled={isBusySlot || isEndOnlyPoint}
+                          disabled={isBusySlot || isEndOnlyPoint || isTooSoonSlot}
                           onClick={() => onClickSlot(i)}
                           className={`rounded-xl px-3 py-2 text-sm border transition shadow-sm ${
-  isBusySlot
-    ? "border-rose-400/60 bg-rose-500/25 text-rose-100 cursor-not-allowed"
-    : isEndOnlyPoint
-    ? "border-white/20 bg-zinc-800/60 text-slate-300 cursor-not-allowed"
-    : (!date && needDateHint)
-    ? "border-red-400 bg-red-500/20 animate-pulse"
-    : isSel
-    ? "border-emerald-400/40 bg-emerald-400/10 shadow-[0_0_12px_rgba(16,185,129,.25)]"
-    : "border-white/10 bg-zinc-900/80 hover:bg-zinc-800/80"
-}`}
-
+                            isBusySlot
+                              ? "border-rose-400/60 bg-rose-500/25 text-rose-100 cursor-not-allowed"
+                              : isTooSoonSlot
+                              ? "border-amber-400/60 bg-amber-500/20 text-amber-100 cursor-not-allowed"
+                              : isEndOnlyPoint
+                              ? "border-white/20 bg-zinc-800/60 text-slate-300 cursor-not-allowed"
+                              : !date && needDateHint
+                              ? "border-red-400 bg-red-500/20 animate-pulse"
+                              : isSel
+                              ? "border-emerald-400/40 bg-emerald-400/10 shadow-[0_0_12px_rgba(16,185,129,.25)]"
+                              : "border-white/10 bg-zinc-900/80 hover:bg-zinc-800/80"
+                          }`}
                         >
                           {point.display}
                         </button>
@@ -850,6 +869,11 @@ function onClickSlot(i) {
                       </button>
                     )}
                   </div>
+                  {date === todayISO && (
+                    <div className="mt-1 text-xs text-amber-200/90">
+                      วันนี้เลือกได้ตั้งแต่ {minSelectableStartLabel || "ไม่มีช่วงเวลาที่จองได้แล้ว"} (บล็อกเวลาปัจจุบัน + 1 ชั่วโมง)
+                    </div>
+                  )}
                 </Card>
               </div>
 
@@ -1105,6 +1129,7 @@ function onClickSlot(i) {
               </StepActions>
             </Section>
           )}
+          </div>
         </div>
       </div>
 
@@ -1169,6 +1194,10 @@ function onClickSlot(i) {
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
+
+      <footer className="relative z-10 py-8 text-center text-xs text-slate-500 border-t border-white/10 mt-auto">
+        © {new Date().getFullYear()} FIET Bookings
+      </footer>
     </div>
   );
 }
@@ -1178,9 +1207,9 @@ function Stepper({ step, total, labels = [] }) {
   const cols = total * 2 - 1; // circle,line,circle,... (คอลัมน์)
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-2">
+    <div className="w-full max-w-4xl mx-auto px-2 overflow-x-auto">
       <div
-        className="grid items-center gap-x-2"
+        className="grid items-center gap-x-2 min-w-[620px] md:min-w-0"
         style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
       >
         {/* วงกลมแต่ละสเต็ป (อยู่คอลัมน์เลขคี่) */}
@@ -1217,13 +1246,51 @@ function Stepper({ step, total, labels = [] }) {
               />
               {labels[i] && (
                 <div
-                  className={`absolute -top-6 left-1/2 -translate-x-1/2 text-center whitespace-nowrap
+                  className={`hidden md:block absolute -top-6 left-1/2 -translate-x-1/2 text-center
                     text-[11px] md:text-sm font-medium
                     ${active ? "text-emerald-300" : "text-slate-400"}`}
                 >
                   {labels[i]}
                 </div>
               )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StepSidebar({ step, labels = [] }) {
+  return (
+    <div className="sticky top-20 rounded-2xl border border-white/10 bg-zinc-900/60 backdrop-blur p-3">
+      <div className="space-y-2">
+        {labels.map((label, idx) => {
+          const n = idx + 1;
+          const active = n === step;
+          const done = n < step;
+
+          return (
+            <div
+              key={label}
+              className={`rounded-xl border px-3 py-2 transition ${
+                active
+                  ? "border-emerald-400/50 bg-emerald-400/10"
+                  : done
+                  ? "border-cyan-400/30 bg-cyan-400/10"
+                  : "border-white/10 bg-white/[.03]"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-grid h-6 w-6 place-items-center rounded-full text-xs font-semibold ${
+                    active || done ? "bg-emerald-400 text-black" : "bg-zinc-700 text-slate-200"
+                  }`}
+                >
+                  {n}
+                </span>
+                <span className={`text-sm ${active ? "text-emerald-200" : "text-slate-300"}`}>{label}</span>
+              </div>
             </div>
           );
         })}
@@ -1366,36 +1433,11 @@ function AddonSelector({ items = [], values, onChange }) {
 }
 
 /* ---------- Fancy Date ---------- */
-function FancyDate({ value, onChange, min }) {
-  const todayISO = new Date().toISOString().slice(0, 10);
+function FancyDate({ value, onChange, min, max }) {
   return (
     <div className="group relative">
       <div className="relative rounded-2xl border border-white/10 bg-zinc-900/70 p-3">
         <label className="text-xs text-slate-400">เลือกวัน</label>
-        <div className="mt-4 flex justify-between">
-          {["จ", "อ", "พ", "พฤ", "ศ"].map((day, i) => {
-            const now = new Date();
-            const target = new Date();
-            const offset = (i + 1 + 7 - now.getDay()) % 7;
-            target.setDate(now.getDate() + offset);
-            const iso = target.toISOString().slice(0, 10);
-            const isActive = value === iso;
-            return (
-              <button
-                type="button"
-                key={day}
-                onClick={() => onChange(iso)}
-                className={`w-12 h-12 rounded-full border text-sm font-medium transition ${
-                  isActive
-                    ? "bg-gradient-to-r from-emerald-400 to-cyan-400 text-black shadow-lg"
-                    : "bg-zinc-800 border-white/10 text-slate-300 hover:bg-zinc-700"
-                }`}
-              >
-                {day}
-              </button>
-            );
-          })}
-        </div>
         <div className="mt-3 relative">
           <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="opacity-80">
@@ -1405,12 +1447,15 @@ function FancyDate({ value, onChange, min }) {
           </span>
           <input
             type="date"
-            min={min || todayISO}
+            required
+            min={min}
+            max={max}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             className="w-full appearance-none rounded-xl bg-zinc-950/70 border border-white/10 pl-10 pr-3 py-2.5 text-slate-200 focus:ring-2 focus:ring-emerald-400/40"
           />
         </div>
+        <p className="mt-2 text-xs text-slate-400">เลือกได้ตั้งแต่วันนี้เป็นต้นไป</p>
       </div>
     </div>
   );
@@ -1517,6 +1562,24 @@ function formatDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString("th-TH", { day: "2-digit", month: "short", year: "numeric" });
 }
+
+function getTodayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+function getMinSelectableStartIndex(dateISO, todayISO) {
+  if (!dateISO || dateISO !== todayISO) return 0;
+
+  const threshold = Date.now() + 60 * 60 * 1000;
+  for (let i = 0; i < TIME_POINTS.length - 1; i++) {
+    const pointAt = new Date(`${dateISO}T${TIME_POINTS[i].value}:00`).getTime();
+    if (pointAt >= threshold) return i;
+  }
+
+  return TIME_POINTS.length;
+}
+
 function normalizeAddonsForPayload(values) {
   return Object.entries(values)
     .filter(([, qty]) => qty > 0)

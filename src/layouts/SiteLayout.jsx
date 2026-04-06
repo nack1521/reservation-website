@@ -19,8 +19,12 @@ function readRoles() {
     // ignore malformed authRoles value
   }
 
-  const single = String(localStorage.getItem("authRole") || "student").toLowerCase();
-  return single ? [single] : ["student"];
+  const single = String(localStorage.getItem("authRole") || "").toLowerCase().trim();
+  if (single) return [single];
+
+  const email = String(localStorage.getItem("authEmail") || "").toLowerCase().trim();
+  if (email.endsWith("@mail.kmutt.ac.th")) return ["student"];
+  return ["user"];
 }
 
 export default function SiteLayout() {
@@ -97,7 +101,7 @@ export default function SiteLayout() {
   }, [nav]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-animated bg-glow text-white">
+    <div className="min-h-screen flex flex-col bg-animated bg-glow text-white overflow-x-hidden">
       {/* NAVBAR */}
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
@@ -115,6 +119,7 @@ export default function SiteLayout() {
             <NavItem to="/book">Rooms</NavItem>
             <NavItem to="/dashboard">Dashboard</NavItem>
             {canAccessAdmin && <NavItem to="/admin-dashboard">Admin</NavItem>}
+            {canAccessAdmin && <NavItem to="/admin-teacher-requests">Teacher Requests</NavItem>}
             <NavItem to="/user-guide">User Guide</NavItem>
           </div>
 

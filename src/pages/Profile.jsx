@@ -1,6 +1,9 @@
 // src/pages/Profile.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { usersAPI } from "../services/users.js";
+import { authAPI } from "../services/api.googleAuth.js";
+import { reservationsAPI } from "../services/reservations.js";
 
 /** Mini helpers */
 const Label = ({ children }) => (
@@ -34,26 +37,63 @@ export default function Profile() {
   const [dept, setDept] = useState("FIET");
   const [phone, setPhone] = useState("");
 
-  const [notifEmail, setNotifEmail] = useState(true);
-  const [notifPush, setNotifPush] = useState(false);
-  const [dark, setDark] = useState(true);
+  const [teacherReqState, setTeacherReqState] = useState({ loading: false, message: "", error: "" });
+  const [roles, setRoles] = useState(() => readRolesFromStorage());
+  const [saveState, setSaveState] = useState({ saving: false, message: "", error: "" });
+  const [bookingRows, setBookingRows] = useState([]);
+  const [bookingLoading, setBookingLoading] = useState(true);
+  const [bookingError, setBookingError] = useState("");
+  const [bookingSummary, setBookingSummary] = useState({ total: 0, upcoming: 0, cancelled: 0 });
+  const hasElevatedRole = roles.some((role) => ["teacher", "admin", "super_admin"].includes(role));
+  const hasPendingRole = roles.includes("pending");
+  const canRequestTeacher = !hasElevatedRole && !hasPendingRole;
 
-  // mock stats & bookings
-  const stats = useMemo(
-    () => ({ total: 18, upcoming: 2, cancelled: 3, hours: 46 }),
-    []
-  );
-  const bookings = [
-    { id: "BK-0921", room: "Room 5", type: "Lecture", when: "2025-10-14 14:00–15:00", status: "Upcoming" },
-    { id: "BK-0917", room: "Room 2", type: "Computer Lab", when: "2025-10-10 09:00–10:00", status: "Completed" },
-    { id: "BK-0910", room: "Room 1", type: "Seminar", when: "2025-10-06 13:00–14:00", status: "Cancelled" },
-  ];
+  const recentBookings = useMemo(() => {
+    return [...bookingRows]
+      .sort((a, b) => (b.startISO || "").localeCompare(a.startISO || ""))
+      .slice(0, 3);
+  }, [bookingRows]);
 
-  function saveProfile(e) {
+  async function saveProfile(e) {
     e.preventDefault();
-    localStorage.setItem("authUser", name.trim() || "USER");
-    localStorage.setItem("authEmail", email.trim() || "student@kmutt.ac.th");
-    alert("Profile updated");
+
+    setSaveState({ saving: true, message: "", error: "" });
+    try {
+      const payload = {
+        name: name.trim(),
+        department: dept.trim(),
+        phone: phone.trim(),
+      };
+      const response = await usersAPI.updateMe(payload);
+      const user = response?.user && typeof response.user === "object" ? response.user : response;
+
+      if (user && typeof user === "object") {
+        const nextRoles = syncAuthUserToLocalStorage(user);
+        setRoles(nextRoles);
+        setName(user?.name || payload.name || name);
+        setEmail(user?.email || email);
+        setDept(user?.department || user?.dept || payload.department || dept);
+        setPhone(user?.phone || payload.phone || phone);
+      } else {
+        localStorage.setItem("authUser", payload.name || "User");
+      }
+
+      setSaveState({
+        saving: false,
+        message: response?.message || "Profile synced to backend successfully.",
+        error: "",
+      });
+    } catch (err) {
+      const msg = String(err?.message || "");
+      const endpointMissing = /404|not found/i.test(msg);
+      setSaveState({
+        saving: false,
+        message: "",
+        error: endpointMissing
+          ? "Backend profile update API is missing (expected PATCH /users/me or /user/me)."
+          : msg || "Cannot sync profile to backend.",
+      });
+    }
   }
 
   function logout() {
@@ -61,6 +101,92 @@ export default function Profile() {
     localStorage.removeItem("authUser");
     localStorage.removeItem("authEmail");
     nav("/login", { replace: true });
+  }
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function refreshRolesFromBackend() {
+      try {
+        const payload = await authAPI.me();
+        const user = payload?.user && typeof payload.user === "object" ? payload.user : payload;
+        if (!user || ignore) return;
+        const nextRoles = syncAuthUserToLocalStorage(user);
+        if (!ignore) {
+          setRoles(nextRoles);
+          if (user?.name) setName(user.name);
+          if (user?.email) setEmail(user.email);
+        }
+      } catch {
+        if (!ignore) setRoles(readRolesFromStorage());
+      }
+    }
+
+    refreshRolesFromBackend();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadBookingData() {
+      setBookingLoading(true);
+      setBookingError("");
+
+      try {
+        const payload = await reservationsAPI.meDashboard();
+        const rows = normalizeDashboardRows(payload);
+        const cancelledCount = rows.filter((row) => row.status === "canceled").length;
+        if (!ignore) {
+          setBookingRows(rows);
+          setBookingSummary({
+            total: Number(payload?.summary?.total ?? rows.length),
+            upcoming: Number(payload?.summary?.upcoming ?? rows.filter((r) => r.status === "upcoming").length),
+            cancelled: cancelledCount,
+          });
+        }
+      } catch (err) {
+        if (!ignore) {
+          setBookingRows([]);
+          setBookingSummary({ total: 0, upcoming: 0, cancelled: 0 });
+          setBookingError(err?.message || "Cannot load recent bookings from backend.");
+        }
+      } finally {
+        if (!ignore) setBookingLoading(false);
+      }
+    }
+
+    loadBookingData();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  async function requestTeacherRole() {
+    if (!canRequestTeacher || teacherReqState.loading) return;
+    setTeacherReqState({ loading: true, message: "", error: "" });
+
+    try {
+      const response = await usersAPI.requestTeacherRole();
+      const user = response?.user || (await authAPI.me())?.user || null;
+      if (user) {
+        const nextRoles = syncAuthUserToLocalStorage(user);
+        setRoles(nextRoles);
+      }
+      setTeacherReqState({
+        loading: false,
+        message: response?.message || "Teacher role request sent. Waiting for admin approval.",
+        error: "",
+      });
+    } catch (err) {
+      setTeacherReqState({
+        loading: false,
+        message: "",
+        error: err?.message || "Cannot submit teacher role request.",
+      });
+    }
   }
 
   return (
@@ -99,11 +225,10 @@ export default function Profile() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full md:w-auto">
-              <Stat label="Total Bookings" value={stats.total} />
-              <Stat label="Upcoming" value={stats.upcoming} />
-              <Stat label="Cancelled" value={stats.cancelled} />
-              <Stat label="Hours Booked" value={stats.hours} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 w-full md:w-auto">
+              <Stat label="Total Bookings" value={bookingSummary.total} />
+              <Stat label="Upcoming" value={bookingSummary.upcoming} />
+              <Stat label="Cancelled" value={bookingSummary.cancelled} />
             </div>
           </div>
         </div>
@@ -138,8 +263,8 @@ export default function Profile() {
                   <input
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl bg-zinc-950/70 border border-white/10 px-3 py-2.5 text-slate-200 focus:ring-2 focus:ring-emerald-400/30"
+                    readOnly
+                    className="w-full rounded-xl bg-zinc-950/50 border border-white/10 px-3 py-2.5 text-slate-300 cursor-not-allowed"
                     placeholder="email@kmutt.ac.th"
                   />
                 </div>
@@ -162,50 +287,63 @@ export default function Profile() {
               </form>
             </SectionCard>
 
-            <SectionCard title="ความปลอดภัย">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="rounded-xl border border-white/10 bg-white/[.04] p-4">
-                  <div className="text-sm text-white font-medium">Change Password</div>
-                  <p className="text-xs text-slate-400 mt-1">อัปเดตรหัสผ่านบัญชีของคุณ</p>
-                  <button
-                    onClick={() => alert("Demo: change password")}
-                    className="mt-3 px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10 text-sm"
-                  >
-                    Update password
-                  </button>
+            <SectionCard title="Role & Permissions">
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {roles.map((role) => (
+                    <span
+                      key={role}
+                      className="text-xs px-2.5 py-1 rounded-full border border-white/20 bg-white/5 text-slate-200"
+                    >
+                      {role}
+                    </span>
+                  ))}
                 </div>
-                <div className="rounded-xl border border-white/10 bg-white/[.04] p-4">
-                  <div className="text-sm text-white font-medium">Two-Factor</div>
-                  <p className="text-xs text-slate-400 mt-1">เพิ่มความปลอดภัยด้วย 2FA</p>
+
+                {canRequestTeacher && (
                   <button
-                    onClick={() => alert("Demo: enable 2FA")}
-                    className="mt-3 px-3 py-2 rounded-lg border border-white/10 hover:bg-white/10 text-sm"
+                    type="button"
+                    disabled={teacherReqState.loading}
+                    onClick={requestTeacherRole}
+                    className="px-4 py-2 rounded-xl bg-emerald-400 text-black font-medium hover:bg-emerald-300 disabled:opacity-60"
                   >
-                    Enable 2FA
+                    {teacherReqState.loading ? "Submitting..." : "Request Teacher Role"}
                   </button>
-                </div>
+                )}
+
+                {hasPendingRole && (
+                  <p className="text-sm text-amber-200">
+                    Teacher role request is pending admin approval.
+                  </p>
+                )}
+
+                {hasElevatedRole && (
+                  <p className="text-sm text-emerald-200">
+                    Your account already has elevated privileges.
+                  </p>
+                )}
+
+                {teacherReqState.error && (
+                  <p className="text-sm text-rose-200">{teacherReqState.error}</p>
+                )}
+                {teacherReqState.message && (
+                  <p className="text-sm text-emerald-200">{teacherReqState.message}</p>
+                )}
               </div>
             </SectionCard>
+
+            {(saveState.error || saveState.message) && (
+              <SectionCard title="Profile Sync Status">
+                <div className="space-y-2">
+                  {saveState.error && <p className="text-sm text-rose-200">{saveState.error}</p>}
+                  {saveState.message && <p className="text-sm text-emerald-200">{saveState.message}</p>}
+                </div>
+              </SectionCard>
+            )}
           </div>
 
           {/* Right: preferences + recent bookings */}
           <div className="space-y-6">
-            <SectionCard title="การตั้งค่า (Preferences)">
-              <div className="space-y-3">
-                <Toggle
-                  label="อีเมลแจ้งเตือนการจอง/เปลี่ยนแปลง"
-                  checked={notifEmail}
-                  onChange={setNotifEmail}
-                />
-                <Toggle
-                  label="การแจ้งเตือนแบบ Push"
-                  checked={notifPush}
-                  onChange={setNotifPush}
-                />
-                <Toggle label="ใช้ธีมเข้ม (Dark)" checked={dark} onChange={setDark} />
-              </div>
-            </SectionCard>
-
             <SectionCard
               title="การจองล่าสุด"
               right={
@@ -221,23 +359,35 @@ export default function Profile() {
                 <table className="w-full text-sm">
                   <thead className="bg-white/5 text-slate-300">
                     <tr>
-                      <th className="text-left px-3 py-2.5">Booking</th>
                       <th className="text-left px-3 py-2.5">Room</th>
-                      <th className="text-left px-3 py-2.5">When</th>
+                      <th className="text-left px-3 py-2.5">Time</th>
                       <th className="text-left px-3 py-2.5">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {bookings.map((b) => (
-                      <tr key={b.id} className="border-t border-white/10">
-                        <td className="px-3 py-2.5 text-slate-200">{b.id}</td>
-                        <td className="px-3 py-2.5 text-slate-300">{b.room} • {b.type}</td>
-                        <td className="px-3 py-2.5 text-slate-400">{b.when}</td>
-                        <td className="px-3 py-2.5">
-                          <StatusPill status={b.status} />
-                        </td>
+                    {bookingLoading ? (
+                      <tr className="border-t border-white/10">
+                        <td className="px-3 py-3 text-slate-300" colSpan={3}>Loading recent bookings...</td>
                       </tr>
-                    ))}
+                    ) : bookingError ? (
+                      <tr className="border-t border-white/10">
+                        <td className="px-3 py-3 text-rose-200" colSpan={3}>{bookingError}</td>
+                      </tr>
+                    ) : recentBookings.length === 0 ? (
+                      <tr className="border-t border-white/10">
+                        <td className="px-3 py-3 text-slate-400" colSpan={3}>No recent bookings found.</td>
+                      </tr>
+                    ) : (
+                      recentBookings.map((b) => (
+                        <tr key={b.id || `${b.startISO}-${b.room}`} className="border-t border-white/10">
+                          <td className="px-3 py-2.5 text-slate-300">{b.room} • {b.type}</td>
+                          <td className="px-3 py-2.5 text-slate-400">{b.when}</td>
+                          <td className="px-3 py-2.5">
+                            <StatusPill status={b.status} />
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -263,38 +413,150 @@ export default function Profile() {
   );
 }
 
-/** Small UI parts */
-function Toggle({ label, checked, onChange }) {
-  return (
-    <label className="flex items-center justify-between gap-4">
-      <span className="text-sm text-slate-300">{label}</span>
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={`w-11 h-6 rounded-full border transition relative ${
-          checked
-            ? "bg-emerald-500/40 border-emerald-400/40"
-            : "bg-white/5 border-white/10"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 ${
-            checked ? "left-5" : "left-0.5"
-          } w-5 h-5 rounded-full bg-white transition`}
-        />
-      </button>
-    </label>
-  );
+function readRolesFromStorage() {
+  try {
+    const raw = localStorage.getItem("authRoles");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const roles = parsed
+          .map((role) => String(role || "").toLowerCase().trim())
+          .filter(Boolean);
+        if (roles.length) return roles;
+      }
+    }
+  } catch {
+    // ignore malformed authRoles
+  }
+
+  const single = String(localStorage.getItem("authRole") || "").toLowerCase().trim();
+  if (single) return [single];
+
+  const email = String(localStorage.getItem("authEmail") || "").toLowerCase().trim();
+  if (email.endsWith("@mail.kmutt.ac.th")) return ["student"];
+  return ["user"];
 }
+
+function syncAuthUserToLocalStorage(user) {
+  const roles = Array.isArray(user?.roles)
+    ? user.roles.map((role) => String(role || "").toLowerCase().trim()).filter(Boolean)
+    : [];
+  const explicitRole = String(user?.role || "").toLowerCase().trim();
+  const email = String(user?.email || localStorage.getItem("authEmail") || "").toLowerCase().trim();
+  const inferredRole = email.endsWith("@mail.kmutt.ac.th") ? "student" : "user";
+  const orderedPrimary =
+    roles.find((r) => ["super_admin", "admin", "teacher", "pending", "student", "user"].includes(r)) || "";
+  const primaryRole = orderedPrimary || explicitRole || inferredRole;
+
+  localStorage.setItem("auth", "true");
+  localStorage.setItem("authUser", user?.name || localStorage.getItem("authUser") || "User");
+  localStorage.setItem("authEmail", user?.email || localStorage.getItem("authEmail") || "");
+  localStorage.setItem("authRole", primaryRole);
+  const storedRoles = roles.length ? roles : [primaryRole];
+  localStorage.setItem("authRoles", JSON.stringify(storedRoles));
+  return storedRoles;
+}
+
+/** Small UI parts */
 function StatusPill({ status }) {
   const map = {
-    Upcoming: "text-emerald-200 border-emerald-400/30 bg-emerald-400/10",
-    Completed: "text-slate-200 border-white/20 bg-white/5",
-    Cancelled: "text-rose-200 border-rose-400/30 bg-rose-400/10",
+    upcoming: "text-emerald-200 border-emerald-400/30 bg-emerald-400/10",
+    pending: "text-sky-200 border-sky-300/30 bg-sky-400/10",
+    done: "text-slate-200 border-white/20 bg-white/5",
+    rejected: "text-rose-200 border-rose-400/30 bg-rose-500/15",
+    canceled: "text-rose-200 border-rose-400/30 bg-rose-400/10",
+  };
+  const labelMap = {
+    upcoming: "Upcoming",
+    pending: "Pending",
+    done: "Completed",
+    rejected: "Rejected",
+    canceled: "Cancelled",
   };
   return (
-    <span className={`text-xs px-2.5 py-1 rounded-full border ${map[status] || ""}`}>
-      {status}
+    <span className={`text-xs px-2.5 py-1 rounded-full border ${map[status] || "text-slate-200 border-white/20 bg-white/5"}`}>
+      {labelMap[status] || status}
     </span>
   );
+}
+
+function normalizeDashboardRows(payload = {}) {
+  const rows = [];
+
+  const upcoming = Array.isArray(payload.upcoming) ? payload.upcoming : [];
+  const pending = Array.isArray(payload.pending) ? payload.pending : [];
+  const history = Array.isArray(payload.history) ? payload.history : [];
+
+  rows.push(...upcoming.map((item) => normalizeReservation(item, "upcoming")));
+  rows.push(...pending.map((item) => normalizeReservation(item, "pending")));
+  rows.push(...history.map((item) => normalizeReservation(item, "history")));
+
+  return rows;
+}
+
+function normalizeReservation(raw = {}, bucket = "") {
+  const id = pickReservationId(raw);
+  const startISO = raw.start ?? raw.startTime ?? raw.startsAt ?? "";
+  const endISO = raw.end ?? raw.endTime ?? raw.endsAt ?? "";
+
+  const startDate = startISO ? new Date(startISO) : null;
+  const endDate = endISO ? new Date(endISO) : null;
+
+  const room = raw.room?.name ?? raw.roomName ?? raw.room?.id ?? "-";
+  const type = raw.room?.type ?? raw.type ?? raw.bookingType ?? "-";
+  const status = mapReservationStatus(raw.status, startDate, endDate, bucket);
+
+  return {
+    id,
+    room: String(room),
+    type: String(type),
+    status,
+    startISO,
+    when: formatDateTimeRange(startDate, endDate),
+  };
+}
+
+function pickReservationId(raw = {}) {
+  const candidates = [raw.id, raw._id, raw.reservationId];
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) return value;
+    if (value && typeof value === "object") {
+      const oid = value.$oid ?? value.oid ?? value.id;
+      if (typeof oid === "string" && oid.trim()) return oid;
+    }
+  }
+  return "";
+}
+
+function mapReservationStatus(statusRaw, startDate, endDate, bucket) {
+  if (bucket === "upcoming") return "upcoming";
+  if (bucket === "pending") return "pending";
+  if (bucket === "history") {
+    const statusInHistory = String(statusRaw || "").toLowerCase();
+    if (statusInHistory === "rejected") return "rejected";
+    if (["cancelled", "canceled"].includes(statusInHistory)) return "canceled";
+    return "done";
+  }
+
+  const status = String(statusRaw || "").toLowerCase();
+  if (status === "pending") return "pending";
+  if (status === "rejected") return "rejected";
+  if (["cancelled", "canceled"].includes(status)) return "canceled";
+  if (startDate instanceof Date && !Number.isNaN(startDate.getTime())) {
+    return startDate.getTime() > Date.now() ? "upcoming" : "done";
+  }
+  if (endDate instanceof Date && !Number.isNaN(endDate.getTime())) {
+    return endDate.getTime() < Date.now() ? "done" : "upcoming";
+  }
+  return "upcoming";
+}
+
+function formatDateTimeRange(startDate, endDate) {
+  const s = startDate instanceof Date && !Number.isNaN(startDate.getTime()) ? startDate : null;
+  const e = endDate instanceof Date && !Number.isNaN(endDate.getTime()) ? endDate : null;
+  if (!s || !e) return "-";
+
+  const st = s.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const et = e.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${st}-${et}`;
 }

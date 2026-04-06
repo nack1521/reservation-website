@@ -99,6 +99,12 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-2">
             <Link
+              to="/admin-teacher-requests"
+              className="rounded-xl px-4 py-2.5 border border-white/20 bg-white/10 hover:bg-white/15 transition"
+            >
+              Teacher Requests
+            </Link>
+            <Link
               to="/admin-rooms"
               className="rounded-xl px-4 py-2.5 border border-white/20 bg-white/10 hover:bg-white/15 transition"
             >
