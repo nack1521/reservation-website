@@ -4,8 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode user",
+    "dev:user": "vite --mode user",
+    "dev:admin": "vite --mode admin",
+    "dev:5175": "vite --mode user --port 5175",
     "build": "vite build",
+    "build:user": "vite build --mode user",
+    "build:admin": "vite build --mode admin",
     "lint": "eslint .",
     "preview": "vite preview"
   },

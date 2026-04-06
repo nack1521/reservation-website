@@ -11,6 +11,40 @@ function pickList(payload) {
   return [];
 }
 
+function pickDashboardPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {
+      upcoming: [],
+      pending: [],
+      history: [],
+      summary: {
+        upcoming: 0,
+        pending: 0,
+        history: 0,
+        total: 0,
+      },
+    };
+  }
+
+  const upcoming = pickList(payload.upcoming);
+  const pending = pickList(payload.pending);
+  const history = pickList(payload.history);
+
+  const summaryRaw = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
+
+  return {
+    upcoming,
+    pending,
+    history,
+    summary: {
+      upcoming: Number(summaryRaw.upcoming ?? upcoming.length),
+      pending: Number(summaryRaw.pending ?? pending.length),
+      history: Number(summaryRaw.history ?? history.length),
+      total: Number(summaryRaw.total ?? upcoming.length + pending.length + history.length),
+    },
+  };
+}
+
 function buildQuery(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -41,6 +75,13 @@ export const reservationsAPI = {
       body: JSON.stringify(payload),
     }),
 
+  cancel: (id) =>
+    apiFetch(`${RES_BASE}/${id}/cancel`, {
+      method: "PATCH",
+      withCredentials: true,
+      auth: true,
+    }),
+
   remove: (id) =>
     apiFetch(`${RES_BASE}/${id}`, {
       method: "DELETE",
@@ -50,8 +91,33 @@ export const reservationsAPI = {
   list: async (params = {}) => {
     const response = await apiFetch(`${RES_BASE}${buildQuery(params)}`, {
       withCredentials: true,
+      auth: true,
     });
     return pickList(response);
+  },
+
+  me: async (params = {}) => {
+    const response = await apiFetch(`${RES_BASE}/me${buildQuery(params)}`, {
+      withCredentials: true,
+      auth: true,
+    });
+    return pickList(response);
+  },
+
+  user: async (userId, params = {}) => {
+    const response = await apiFetch(`${RES_BASE}/user/${userId}${buildQuery(params)}`, {
+      withCredentials: true,
+      auth: true,
+    });
+    return pickList(response);
+  },
+
+  meDashboard: async () => {
+    const response = await apiFetch(`${RES_BASE}/me/dashboard`, {
+      withCredentials: true,
+      auth: true,
+    });
+    return pickDashboardPayload(response);
   },
 
   pending: async () => {

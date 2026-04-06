@@ -1,13 +1,42 @@
 // src/pages/Login.jsx
 import { useState, useEffect, useCallback } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import FietLogo from "../components/FietLogo.jsx";
 import { authAPI } from "../services/api.googleAuth.js";
+
+function isAdminRole(role) {
+  const normalized = String(role || "").toLowerCase();
+  return normalized === "admin" || normalized === "super_admin";
+}
+
+function extractRoles(user = {}) {
+  const list = Array.isArray(user.roles) ? user.roles : [];
+  const normalized = list
+    .map((r) => String(r || "").toLowerCase().trim())
+    .filter(Boolean);
+
+  if (normalized.length > 0) return normalized;
+
+  const single = String(user.role || "").toLowerCase().trim();
+  return single ? [single] : ["student"];
+}
+
+function pickPrimaryRole(roles) {
+  if (roles.includes("super_admin")) return "super_admin";
+  if (roles.includes("admin")) return "admin";
+  return roles[0] || "student";
+}
+
+function isAdminApp() {
+  if (typeof window !== "undefined" && window.location?.port) {
+    return window.location.port === "5715";
+  }
+  return (import.meta.env.VITE_APP_MODE || "user") === "admin";
+}
 
 export default function Login() {
   const nav = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
   const from = location.state?.from?.pathname || "/";
 
   const [status, setStatus] = useState("idle");
@@ -16,20 +45,63 @@ export default function Login() {
   const fetchUserInfo = useCallback(async () => {
     try {
       const data = await authAPI.me();
+      const user = data?.user && typeof data.user === "object" ? data.user : (data || {});
+      const roles = extractRoles(user);
+      const role = pickPrimaryRole(roles);
+
+      if (isAdminApp() && !isAdminRole(role)) {
+        localStorage.removeItem("auth");
+        localStorage.removeItem("authUser");
+        localStorage.removeItem("authEmail");
+        localStorage.removeItem("authRole");
+        localStorage.removeItem("authRoles");
+        localStorage.removeItem("authPicture");
+        setStatus("error");
+        setError("Admin portal (5715) allows admin/super_admin login only.");
+        return;
+      }
+
       localStorage.setItem("auth", "true");
-      localStorage.setItem("authUser", data.user.name);
-      localStorage.setItem("authEmail", data.user.email);
-      localStorage.setItem("authRole", data.user.role || "student");
-      if (data.user.picture) {
-        localStorage.setItem("authPicture", data.user.picture);
+      localStorage.setItem("authUser", user.name || "User");
+      localStorage.setItem("authEmail", user.email || "");
+      localStorage.setItem("authRole", role);
+      localStorage.setItem("authRoles", JSON.stringify(roles));
+      if (user.picture) {
+        localStorage.setItem("authPicture", user.picture);
       }
       setStatus("success");
       setTimeout(() => nav(from, { replace: true }), 900);
     } catch {
-      setError("Failed to fetch user information");
+      localStorage.removeItem("auth");
+      localStorage.removeItem("authUser");
+      localStorage.removeItem("authEmail");
+      localStorage.removeItem("authRole");
+      localStorage.removeItem("authRoles");
+      localStorage.removeItem("authPicture");
       setStatus("error");
+      setError("Login succeeded but failed to establish frontend session");
+      throw new Error("SESSION_NOT_READY");
     }
   }, [nav, from]);
+
+  const tryFetchUserInfo = useCallback(async () => {
+    try {
+      await fetchUserInfo();
+      return;
+    } catch {
+      // OAuth session/cookie can arrive slightly later; retry briefly.
+    }
+
+    for (let i = 0; i < 4; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      try {
+        await fetchUserInfo();
+        return;
+      } catch {
+        // Continue retry loop.
+      }
+    }
+  }, [fetchUserInfo]);
 
   // Handle OAuth callback
   useEffect(() => {
@@ -56,14 +128,20 @@ export default function Login() {
       `width=${width},height=${height},left=${left},top=${top}`
     );
 
+    if (!popup) {
+      setStatus("error");
+      setError("Popup was blocked. Please allow popups and try again.");
+      return;
+    }
+
     // Check if popup was closed without completing login
     const checkPopup = setInterval(() => {
-      if (!popup || popup.closed) {
+      if (popup.closed) {
         clearInterval(checkPopup);
-        if (status === "loading") {
+        tryFetchUserInfo().catch(() => {
           setStatus("idle");
           setError("Login cancelled or popup was blocked");
-        }
+        });
       }
     }, 500);
   }
@@ -76,17 +154,10 @@ export default function Login() {
       return;
     }
 
-    const { success, user, error: errorMsg } = event.data;
+    const { success, error: errorMsg } = event.data || {};
 
-    if (success && user) {
-      localStorage.setItem("auth", "true");
-      localStorage.setItem("authUser", user.name);
-      localStorage.setItem("authEmail", user.email);
-      localStorage.setItem("authRole", user.role || "student");
-      if (user.picture) localStorage.setItem("authPicture", user.picture);
-
-      setStatus("success");
-      setTimeout(() => nav(from, { replace: true }), 900);
+    if (success) {
+      tryFetchUserInfo();
     } else {
       setError(errorMsg || "Login failed");
       setStatus("error");

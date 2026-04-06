@@ -3,9 +3,31 @@ import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { authAPI } from "../services/api.googleAuth.js";
 
+function readRoles() {
+  try {
+    const raw = localStorage.getItem("authRoles");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const items = parsed
+          .map((r) => String(r || "").toLowerCase().trim())
+          .filter(Boolean);
+        if (items.length) return items;
+      }
+    }
+  } catch {
+    // ignore malformed authRoles value
+  }
+
+  const single = String(localStorage.getItem("authRole") || "student").toLowerCase();
+  return single ? [single] : ["student"];
+}
+
 export default function SiteLayout() {
   const nav = useNavigate();
   const loc = useLocation();
+  const roles = readRoles();
+  const canAccessAdmin = roles.includes("admin") || roles.includes("super_admin");
 
   function clearAuthAndRedirect() {
     localStorage.removeItem("auth");
@@ -14,6 +36,7 @@ export default function SiteLayout() {
     localStorage.removeItem("authEmail");
     localStorage.removeItem("authPicture");
     localStorage.removeItem("authRole");
+    localStorage.removeItem("authRoles");
     nav("/login", { replace: true });
   }
 
@@ -28,7 +51,11 @@ export default function SiteLayout() {
     if (!authed && loc.pathname !== "/login") {
       nav("/login", { replace: true });
     }
-  }, [loc.pathname, nav]);
+
+    if (authed && !canAccessAdmin && loc.pathname.startsWith("/admin")) {
+      nav("/dashboard", { replace: true });
+    }
+  }, [canAccessAdmin, loc.pathname, nav]);
 
   useEffect(() => {
     let stopped = false;
@@ -87,7 +114,7 @@ export default function SiteLayout() {
             <NavItem to="/">Home</NavItem>
             <NavItem to="/book">Rooms</NavItem>
             <NavItem to="/dashboard">Dashboard</NavItem>
-            <NavItem to="/admin-dashboard">Admin</NavItem>
+            {canAccessAdmin && <NavItem to="/admin-dashboard">Admin</NavItem>}
             <NavItem to="/user-guide">User Guide</NavItem>
           </div>
 
@@ -173,6 +200,7 @@ function UserProfile() {
     localStorage.removeItem("authAt");
     localStorage.removeItem("authEmail");
     localStorage.removeItem("authRole");
+    localStorage.removeItem("authRoles");
     nav("/login", { replace: true });
   }
 
