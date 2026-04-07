@@ -34,7 +34,6 @@ export default function Profile() {
 
   const [name, setName] = useState(initUser);
   const [email, setEmail] = useState(initMail);
-  const [dept, setDept] = useState("FIET");
   const [phone, setPhone] = useState("");
 
   const [teacherReqState, setTeacherReqState] = useState({ loading: false, message: "", error: "" });
@@ -60,9 +59,7 @@ export default function Profile() {
     setSaveState({ saving: true, message: "", error: "" });
     try {
       const payload = {
-        name: name.trim(),
-        department: dept.trim(),
-        phone: phone.trim(),
+        phoneNumber: phone.trim(),
       };
       const response = await usersAPI.updateMe(payload);
       const user = response?.user && typeof response.user === "object" ? response.user : response;
@@ -70,12 +67,11 @@ export default function Profile() {
       if (user && typeof user === "object") {
         const nextRoles = syncAuthUserToLocalStorage(user);
         setRoles(nextRoles);
-        setName(user?.name || payload.name || name);
+        setName(user?.name || name);
         setEmail(user?.email || email);
-        setDept(user?.department || user?.dept || payload.department || dept);
-        setPhone(user?.phone || payload.phone || phone);
+        setPhone(user?.phoneNumber || user?.phone || payload.phoneNumber || phone);
       } else {
-        localStorage.setItem("authUser", payload.name || "User");
+        localStorage.setItem("authUser", name || "User");
       }
 
       setSaveState({
@@ -108,7 +104,13 @@ export default function Profile() {
 
     async function refreshRolesFromBackend() {
       try {
-        const payload = await authAPI.me();
+        let payload = null;
+        try {
+          payload = await authAPI.profile();
+        } catch {
+          payload = await authAPI.me();
+        }
+
         const user = payload?.user && typeof payload.user === "object" ? payload.user : payload;
         if (!user || ignore) return;
         const nextRoles = syncAuthUserToLocalStorage(user);
@@ -116,6 +118,7 @@ export default function Profile() {
           setRoles(nextRoles);
           if (user?.name) setName(user.name);
           if (user?.email) setEmail(user.email);
+          setPhone(user?.phoneNumber || user?.phone || "");
         }
       } catch {
         if (!ignore) setRoles(readRolesFromStorage());
@@ -269,16 +272,9 @@ export default function Profile() {
                   />
                 </div>
                 <div>
-                  <Label>Department</Label>
-                  <input
-                    value={dept}
-                    onChange={(e) => setDept(e.target.value)}
-                    className="w-full rounded-xl bg-zinc-950/70 border border-white/10 px-3 py-2.5 text-slate-200"
-                  />
-                </div>
-                <div>
                   <Label>Phone</Label>
                   <input
+                    type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="w-full rounded-xl bg-zinc-950/70 border border-white/10 px-3 py-2.5 text-slate-200"

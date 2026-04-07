@@ -30,6 +30,13 @@ function isAuthed() {
   return localStorage.getItem("auth") === "true";
 }
 
+function normalizeRoleToken(value) {
+  const normalized = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if (normalized === "superadmin" || normalized === "super_admin") return "super_admin";
+  if (normalized === "administrator") return "admin";
+  return normalized;
+}
+
 function readRoles() {
   try {
     const raw = localStorage.getItem("authRoles");
@@ -37,7 +44,7 @@ function readRoles() {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         const items = parsed
-          .map((r) => String(r || "").toLowerCase().trim())
+          .map((r) => normalizeRoleToken(r))
           .filter(Boolean);
         if (items.length) return items;
       }
@@ -46,7 +53,7 @@ function readRoles() {
     // ignore malformed authRoles value
   }
 
-  const single = String(localStorage.getItem("authRole") || "").toLowerCase().trim();
+  const single = normalizeRoleToken(localStorage.getItem("authRole") || "");
   if (single) return [single];
 
   const email = String(localStorage.getItem("authEmail") || "").toLowerCase().trim();

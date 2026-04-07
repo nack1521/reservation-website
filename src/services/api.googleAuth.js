@@ -15,10 +15,15 @@ export const authAPI = {
   /**
    * Get current user info
    */
-  me: () => apiFetch("/auth/me", { withCredentials: true, auth: true }),
+  me: () => apiFetch("/auth/me", { withCredentials: true }),
+
+  /**
+   * Get full profile from DB (includes full roles)
+   */
+  profile: () => apiFetch("/auth/profile", { withCredentials: true }),
 
   /**
    * Logout user
    */
-  logout: () => apiFetch("/auth/logout", { method: "POST", withCredentials: true }),
+  logout: () => apiFetch("/auth/logout", { method: "GET", withCredentials: true }),
 };

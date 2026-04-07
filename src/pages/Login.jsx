@@ -5,25 +5,54 @@ import FietLogo from "../components/FietLogo.jsx";
 import { authAPI } from "../services/api.googleAuth.js";
 import { getApiBaseUrl, getApiOrigin } from "../services/config.js";
 
+function normalizeRoleToken(value) {
+  const normalized = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if (normalized === "superadmin" || normalized === "super_admin") return "super_admin";
+  if (normalized === "administrator") return "admin";
+  return normalized;
+}
+
+function readRoleValue(input) {
+  if (typeof input === "string") return normalizeRoleToken(input);
+  if (!input || typeof input !== "object") return "";
+
+  const picked = input.role || input.name || input.value || input.key || "";
+  return normalizeRoleToken(picked);
+}
+
 function isAdminRole(role) {
-  const normalized = String(role || "").toLowerCase();
+  const normalized = normalizeRoleToken(role);
   return normalized === "admin" || normalized === "super_admin";
 }
 
 function extractRoles(user = {}) {
   const list = Array.isArray(user.roles) ? user.roles : [];
   const normalized = list
-    .map((r) => String(r || "").toLowerCase().trim())
+    .map((r) => readRoleValue(r))
     .filter(Boolean);
 
   if (normalized.length > 0) return normalized;
 
   if (typeof user.roles === "string" && user.roles.trim()) {
-    return [user.roles.toLowerCase().trim()];
+    return user.roles
+      .split(",")
+      .map((r) => normalizeRoleToken(r))
+      .filter(Boolean);
   }
 
-  const single = String(user.role || "").toLowerCase().trim();
+  const single = readRoleValue(user.role);
   return single ? [single] : ["student"];
+}
+
+function resolveUserFromAuthPayload(data) {
+  if (!data || typeof data !== "object") return {};
+
+  if (data.user && typeof data.user === "object") return data.user;
+  if (data.data?.user && typeof data.data.user === "object") return data.data.user;
+  if (data.data && typeof data.data === "object") return data.data;
+  if (data.profile && typeof data.profile === "object") return data.profile;
+
+  return data;
 }
 
 function pickPrimaryRole(roles) {
@@ -34,6 +63,29 @@ function pickPrimaryRole(roles) {
   if (roles.includes("student")) return "student";
   if (roles.includes("user")) return "user";
   return roles[0] || "student";
+}
+
+function mergeRoles(primaryRoles = [], fallbackRoles = []) {
+  const combined = [...primaryRoles, ...fallbackRoles]
+    .map((r) => normalizeRoleToken(r))
+    .filter(Boolean);
+
+  if (!combined.length) return [];
+
+  const unique = Array.from(new Set(combined));
+  const ordered = ["super_admin", "admin", "teacher", "pending", "student", "user"];
+
+  return [
+    ...ordered.filter((role) => unique.includes(role)),
+    ...unique.filter((role) => !ordered.includes(role)),
+  ];
+}
+
+function shouldEnrichRoles(roles = []) {
+  const list = Array.isArray(roles) ? roles : [];
+  if (!list.length) return true;
+  if (list.includes("admin") || list.includes("super_admin")) return false;
+  return list.length === 1 && list[0] === "user";
 }
 
 function inferDefaultRoleByEmail(email) {
@@ -49,46 +101,6 @@ function isAdminApp() {
   return (import.meta.env.VITE_APP_MODE || "user") === "admin";
 }
 
-function pickToken(payload = {}) {
-  if (!payload || typeof payload !== "object") return "";
-  return String(
-    payload.accessToken ||
-      payload.token ||
-      payload.jwt ||
-      payload.authToken ||
-      ""
-  ).trim();
-}
-
-function persistToken(token) {
-  const value = String(token || "").trim();
-  if (!value) return false;
-  localStorage.setItem("accessToken", value);
-  return true;
-}
-
-function readTokenFromCurrentUrl() {
-  const fromSearch = new URLSearchParams(window.location.search);
-  const searchToken =
-    fromSearch.get("accessToken") ||
-    fromSearch.get("token") ||
-    fromSearch.get("jwt") ||
-    fromSearch.get("authToken") ||
-    "";
-  if (searchToken) return String(searchToken).trim();
-
-  const rawHash = String(window.location.hash || "").replace(/^#/, "");
-  if (!rawHash) return "";
-  const fromHash = new URLSearchParams(rawHash);
-  return String(
-    fromHash.get("accessToken") ||
-      fromHash.get("token") ||
-      fromHash.get("jwt") ||
-      fromHash.get("authToken") ||
-      ""
-  ).trim();
-}
-
 export default function Login() {
   const nav = useNavigate();
   const location = useLocation();
@@ -100,37 +112,60 @@ export default function Login() {
   const apiOrigin = getApiOrigin();
   const bootstrapInFlightRef = useRef(false);
   const oauthHandledRef = useRef(false);
+  const callbackRolesRef = useRef([]);
+
+  const applyUserToSession = useCallback((rawUser, preferredRoles = []) => {
+    const user = resolveUserFromAuthPayload(rawUser);
+    const extractedRoles = extractRoles(user);
+    const mergedRoles = mergeRoles(preferredRoles, extractedRoles);
+    const roles = mergedRoles.length ? mergedRoles : [inferDefaultRoleByEmail(user?.email)];
+    const role = pickPrimaryRole(roles);
+
+    if (isAdminApp() && !isAdminRole(role)) {
+      localStorage.removeItem("auth");
+      localStorage.removeItem("authUser");
+      localStorage.removeItem("authEmail");
+      localStorage.removeItem("authRole");
+      localStorage.removeItem("authRoles");
+      localStorage.removeItem("authPicture");
+      setStatus("error");
+      setError("Admin portal (5715) allows admin/super_admin login only.");
+      return false;
+    }
+
+    localStorage.setItem("auth", "true");
+    localStorage.setItem("authUser", user.name || "User");
+    localStorage.setItem("authEmail", user.email || "");
+    localStorage.setItem("authRole", role);
+    localStorage.setItem("authRoles", JSON.stringify(roles));
+    if (user.picture) {
+      localStorage.setItem("authPicture", user.picture);
+    }
+
+    setStatus("success");
+    setTimeout(() => nav(from, { replace: true }), 900);
+    return true;
+  }, [from, nav]);
 
   const fetchUserInfo = useCallback(async () => {
     try {
       const data = await authAPI.me();
-      const user = data?.user && typeof data.user === "object" ? data.user : (data || {});
-      const extractedRoles = extractRoles(user);
-      const roles = extractedRoles.length ? extractedRoles : [inferDefaultRoleByEmail(user?.email)];
-      const role = pickPrimaryRole(roles);
+      const meUser = resolveUserFromAuthPayload(data);
+      const meRoles = extractRoles(meUser);
 
-      if (isAdminApp() && !isAdminRole(role)) {
-        localStorage.removeItem("auth");
-        localStorage.removeItem("authUser");
-        localStorage.removeItem("authEmail");
-        localStorage.removeItem("authRole");
-        localStorage.removeItem("authRoles");
-        localStorage.removeItem("authPicture");
-        setStatus("error");
-        setError("Admin portal (5715) allows admin/super_admin login only.");
-        return;
+      if (shouldEnrichRoles(meRoles)) {
+        try {
+          const profileData = await authAPI.profile();
+          const profileUser = resolveUserFromAuthPayload(profileData);
+          const mergedPreferred = mergeRoles(callbackRolesRef.current, meRoles);
+          applyUserToSession(profileUser, mergedPreferred);
+          return;
+        } catch {
+          // Fallback to /auth/me payload if /auth/profile is unavailable.
+        }
       }
 
-      localStorage.setItem("auth", "true");
-      localStorage.setItem("authUser", user.name || "User");
-      localStorage.setItem("authEmail", user.email || "");
-      localStorage.setItem("authRole", role);
-      localStorage.setItem("authRoles", JSON.stringify(roles));
-      if (user.picture) {
-        localStorage.setItem("authPicture", user.picture);
-      }
-      setStatus("success");
-      setTimeout(() => nav(from, { replace: true }), 900);
+      applyUserToSession(meUser, callbackRolesRef.current);
     } catch (err) {
       localStorage.removeItem("auth");
       localStorage.removeItem("authUser");
@@ -142,7 +177,7 @@ export default function Login() {
       setError(`Login succeeded but failed to establish frontend session (${err?.message || "unknown error"})`);
       throw new Error("SESSION_NOT_READY");
     }
-  }, [nav, from]);
+  }, [applyUserToSession]);
 
   const tryFetchUserInfo = useCallback(async () => {
     try {
@@ -172,22 +207,6 @@ export default function Login() {
       bootstrapInFlightRef.current = false;
     }
   }, [tryFetchUserInfo]);
-
-  useEffect(() => {
-    const urlToken = readTokenFromCurrentUrl();
-    if (!urlToken) return;
-
-    persistToken(urlToken);
-    if (window.location.search || window.location.hash) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-
-    setStatus("loading");
-    runSessionBootstrap().catch(() => {
-      setStatus("error");
-      setError("Login succeeded but failed to establish frontend session");
-    });
-  }, [runSessionBootstrap]);
 
   // Handle OAuth callback
   useEffect(() => {
@@ -244,14 +263,15 @@ export default function Login() {
     const payload = event.data && typeof event.data === "object" ? event.data : {};
     const { success, error: errorMsg } = payload;
 
-    const callbackToken = pickToken(payload);
-    if (callbackToken) {
-      persistToken(callbackToken);
-    }
-
-    if (success || callbackToken) {
+    if (success) {
       if (oauthHandledRef.current) return;
       oauthHandledRef.current = true;
+
+      if (payload.user && typeof payload.user === "object") {
+        callbackRolesRef.current = extractRoles(payload.user);
+        applyUserToSession(payload.user, callbackRolesRef.current);
+      }
+
       runSessionBootstrap();
     } else {
       setError(errorMsg || "Login failed");

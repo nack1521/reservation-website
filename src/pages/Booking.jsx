@@ -1,5 +1,5 @@
 // src/pages/Booking.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { roomAPI } from "../services/rooms.js";
 import { reservationsAPI } from "../services/reservations.js";
@@ -1434,26 +1434,53 @@ function AddonSelector({ items = [], values, onChange }) {
 
 /* ---------- Fancy Date ---------- */
 function FancyDate({ value, onChange, min, max }) {
+  const inputRef = useRef(null);
+
+  function openPicker() {
+    const el = inputRef.current;
+    if (!el) return;
+
+    if (typeof el.showPicker === "function") {
+      el.showPicker();
+      return;
+    }
+
+    el.focus();
+    el.click();
+  }
+
   return (
     <div className="group relative">
       <div className="relative rounded-2xl border border-white/10 bg-zinc-900/70 p-3">
         <label className="text-xs text-slate-400">เลือกวัน</label>
         <div className="mt-3 relative">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="opacity-80">
               <rect x="3" y="5" width="18" height="16" rx="3" ry="3" stroke="currentColor" />
               <path d="M16 3v4M8 3v4M3 9h18" stroke="currentColor" />
             </svg>
           </span>
           <input
+            ref={inputRef}
             type="date"
             required
             min={min}
             max={max}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="w-full appearance-none rounded-xl bg-zinc-950/70 border border-white/10 pl-10 pr-3 py-2.5 text-slate-200 focus:ring-2 focus:ring-emerald-400/40"
+            className="booking-date-input w-full rounded-xl bg-zinc-950/70 border border-white/10 pl-10 pr-12 py-2.5 text-slate-200 focus:ring-2 focus:ring-emerald-400/40"
           />
+          <button
+            type="button"
+            onClick={openPicker}
+            aria-label="Open date picker"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg border border-white/20 bg-white/10 p-1.5 text-white hover:bg-white/20"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="5" width="18" height="16" rx="3" ry="3" stroke="currentColor" />
+              <path d="M16 3v4M8 3v4M3 9h18" stroke="currentColor" />
+            </svg>
+          </button>
         </div>
         <p className="mt-2 text-xs text-slate-400">เลือกได้ตั้งแต่วันนี้เป็นต้นไป</p>
       </div>
