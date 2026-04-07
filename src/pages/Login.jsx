@@ -1,8 +1,9 @@
 // src/pages/Login.jsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import FietLogo from "../components/FietLogo.jsx";
 import { authAPI } from "../services/api.googleAuth.js";
+import { getApiBaseUrl, getApiOrigin } from "../services/config.js";
 
 function isAdminRole(role) {
   const normalized = String(role || "").toLowerCase();
@@ -48,6 +49,46 @@ function isAdminApp() {
   return (import.meta.env.VITE_APP_MODE || "user") === "admin";
 }
 
+function pickToken(payload = {}) {
+  if (!payload || typeof payload !== "object") return "";
+  return String(
+    payload.accessToken ||
+      payload.token ||
+      payload.jwt ||
+      payload.authToken ||
+      ""
+  ).trim();
+}
+
+function persistToken(token) {
+  const value = String(token || "").trim();
+  if (!value) return false;
+  localStorage.setItem("accessToken", value);
+  return true;
+}
+
+function readTokenFromCurrentUrl() {
+  const fromSearch = new URLSearchParams(window.location.search);
+  const searchToken =
+    fromSearch.get("accessToken") ||
+    fromSearch.get("token") ||
+    fromSearch.get("jwt") ||
+    fromSearch.get("authToken") ||
+    "";
+  if (searchToken) return String(searchToken).trim();
+
+  const rawHash = String(window.location.hash || "").replace(/^#/, "");
+  if (!rawHash) return "";
+  const fromHash = new URLSearchParams(rawHash);
+  return String(
+    fromHash.get("accessToken") ||
+      fromHash.get("token") ||
+      fromHash.get("jwt") ||
+      fromHash.get("authToken") ||
+      ""
+  ).trim();
+}
+
 export default function Login() {
   const nav = useNavigate();
   const location = useLocation();
@@ -55,6 +96,10 @@ export default function Login() {
 
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
+  const apiBaseUrl = getApiBaseUrl();
+  const apiOrigin = getApiOrigin();
+  const bootstrapInFlightRef = useRef(false);
+  const oauthHandledRef = useRef(false);
 
   const fetchUserInfo = useCallback(async () => {
     try {
@@ -86,7 +131,7 @@ export default function Login() {
       }
       setStatus("success");
       setTimeout(() => nav(from, { replace: true }), 900);
-    } catch {
+    } catch (err) {
       localStorage.removeItem("auth");
       localStorage.removeItem("authUser");
       localStorage.removeItem("authEmail");
@@ -94,7 +139,7 @@ export default function Login() {
       localStorage.removeItem("authRoles");
       localStorage.removeItem("authPicture");
       setStatus("error");
-      setError("Login succeeded but failed to establish frontend session");
+      setError(`Login succeeded but failed to establish frontend session (${err?.message || "unknown error"})`);
       throw new Error("SESSION_NOT_READY");
     }
   }, [nav, from]);
@@ -118,6 +163,32 @@ export default function Login() {
     }
   }, [fetchUserInfo]);
 
+  const runSessionBootstrap = useCallback(async () => {
+    if (bootstrapInFlightRef.current) return;
+    bootstrapInFlightRef.current = true;
+    try {
+      await tryFetchUserInfo();
+    } finally {
+      bootstrapInFlightRef.current = false;
+    }
+  }, [tryFetchUserInfo]);
+
+  useEffect(() => {
+    const urlToken = readTokenFromCurrentUrl();
+    if (!urlToken) return;
+
+    persistToken(urlToken);
+    if (window.location.search || window.location.hash) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    setStatus("loading");
+    runSessionBootstrap().catch(() => {
+      setStatus("error");
+      setError("Login succeeded but failed to establish frontend session");
+    });
+  }, [runSessionBootstrap]);
+
   // Handle OAuth callback
   useEffect(() => {
     // Listen for popup messages on mount
@@ -129,6 +200,7 @@ export default function Login() {
   }, []);
 
   function handleGoogleLogin() {
+    oauthHandledRef.current = false;
     setStatus("loading");
     setError(""); // Clear previous errors
     
@@ -138,7 +210,7 @@ export default function Login() {
     const top = window.screenY + (window.outerHeight - height) / 2;
     
     const popup = window.open(
-      `${import.meta.env.VITE_API_URL || "http://localhost:3000"}/auth/google`,
+      `${apiBaseUrl}/auth/google`,
       "Google Login",
       `width=${width},height=${height},left=${left},top=${top}`
     );
@@ -153,7 +225,7 @@ export default function Login() {
     const checkPopup = setInterval(() => {
       if (popup.closed) {
         clearInterval(checkPopup);
-        tryFetchUserInfo().catch(() => {
+        runSessionBootstrap().catch(() => {
           setStatus("idle");
           setError("Login cancelled or popup was blocked");
         });
@@ -163,16 +235,24 @@ export default function Login() {
 
   function handleOAuthCallback(event) {
     // Verify origin
-    const expectedOrigin = import.meta.env.VITE_API_URL || "http://localhost:3000";
+    const expectedOrigin = apiOrigin;
     if (event.origin !== expectedOrigin) {
       console.warn('Received message from unexpected origin:', event.origin);
       return;
     }
 
-    const { success, error: errorMsg } = event.data || {};
+    const payload = event.data && typeof event.data === "object" ? event.data : {};
+    const { success, error: errorMsg } = payload;
 
-    if (success) {
-      tryFetchUserInfo();
+    const callbackToken = pickToken(payload);
+    if (callbackToken) {
+      persistToken(callbackToken);
+    }
+
+    if (success || callbackToken) {
+      if (oauthHandledRef.current) return;
+      oauthHandledRef.current = true;
+      runSessionBootstrap();
     } else {
       setError(errorMsg || "Login failed");
       setStatus("error");

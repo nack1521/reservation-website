@@ -1,6 +1,6 @@
-const API_BASE = import.meta.env.DEV
-  ? ""
-  : import.meta.env.VITE_API_URL || "http://localhost:3000";
+import { getApiBaseUrl } from "./config.js";
+
+const API_BASE = getApiBaseUrl();
 
 function readAccessToken() {
   return (
@@ -10,6 +10,24 @@ function readAccessToken() {
     localStorage.getItem("jwt") ||
     ""
   );
+}
+
+async function parseSuccessBody(response) {
+  if (response.status === 204) return {};
+
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    return await response.json().catch(() => ({}));
+  }
+
+  const text = await response.text().catch(() => "");
+  if (!text.trim()) return {};
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
 }
 
 /**
@@ -63,7 +81,7 @@ async function apiFetch(endpoint, options = {}) {
       throw new Error(error.message || `HTTP ${response.status}`);
     }
 
-    return await response.json();
+    return await parseSuccessBody(response);
   } catch (error) {
     console.error("API Error:", error);
     if (error?.message === "Failed to fetch") {

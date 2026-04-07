@@ -1,6 +1,7 @@
 import apiFetch from "./client.js";
+import { getApiBaseUrl } from "./config.js";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const API_BASE = getApiBaseUrl();
 
 export const authAPI = {
   /**
@@ -14,7 +15,7 @@ export const authAPI = {
   /**
    * Get current user info
    */
-  me: () => apiFetch("/auth/me", { withCredentials: true }),
+  me: () => apiFetch("/auth/me", { withCredentials: true, auth: true }),
 
   /**
    * Logout user
