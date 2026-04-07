@@ -1,5 +1,6 @@
 // src/pages/Booking.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { roomAPI } from "../services/rooms.js";
 import { reservationsAPI } from "../services/reservations.js";
@@ -455,6 +456,57 @@ export default function Booking() {
   }
 
   /* ===================== UI ===================== */
+  const successOverlay = step === 4
+    ? createPortal(
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/82 backdrop-blur-sm">
+          <div className="w-full max-w-xl mx-4 rounded-3xl border border-white/10 bg-zinc-950/90 p-6 md:p-8 text-center shadow-[0_30px_120px_-40px_rgba(16,185,129,0.55)] animate-[appear_400ms_ease-out] select-none">
+            <div className="mx-auto w-28 h-28 rounded-full bg-emerald-400/15 ring-1 ring-emerald-300/40 shadow-[0_0_40px_rgba(16,185,129,0.45)] grid place-items-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-400 grid place-items-center shadow-[0_10px_30px_rgba(16,185,129,0.7)]">
+                <svg viewBox="0 0 24 24" className="w-10 h-10 text-black">
+                  <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+            </div>
+
+            <h2 className="mt-5 text-2xl md:text-3xl font-bold text-emerald-400 drop-shadow">
+              {createdReservationStatus === "pending" ? "Request Submitted" : "Reservation Success"}
+            </h2>
+
+            <p className="mt-2 text-slate-300">{createdReservationMessage || "Booking saved."}</p>
+
+            <div className="mt-3 inline-flex items-center rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
+              Status: <span className="ml-1 font-semibold uppercase">{createdReservationStatus || "approved"}</span>
+            </div>
+
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="px-4 py-2 rounded-xl bg-white text-black font-medium hover:opacity-90"
+              >
+                ไปแดชบอร์ด
+              </button>
+              <button
+                onClick={() => navigate("/")}
+                className="px-4 py-2 rounded-xl bg-white text-black font-medium hover:opacity-90"
+              >
+                กลับหน้าแรก
+              </button>
+              <button
+                onClick={() => {
+                  resetAll();
+                  setStep(1);
+                }}
+                className="px-4 py-2 rounded-xl border border-emerald-400/40 text-emerald-300 hover:bg-emerald-400/10"
+              >
+                จองใหม่
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )
+    : null;
+
   return (
     <div className="relative min-h-screen flex flex-col bg-animated bg-glow overflow-x-hidden text-white">
       {/* Header + Stepper */}
@@ -1138,58 +1190,7 @@ export default function Booking() {
       </div>
 
       {/* STEP 4 — Success overlay */}
-      {step === 4 && (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-          <div className="text-center animate-[appear_400ms_ease-out]">
-            <div className="mx-auto w-40 h-40 rounded-full bg-emerald-400/15 ring-1 ring-emerald-300/40 shadow-[0_0_60px_rgba(16,185,129,0.45)] grid place-items-center">
-              <div className="w-24 h-24 rounded-full bg-emerald-400 grid place-items-center shadow-[0_10px_40px_rgba(16,185,129,0.7)]">
-                <svg viewBox="0 0 24 24" className="w-14 h-14 text-black">
-                  <path
-                    d="M5 13l4 4L19 7"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-            </div>
-            <h2 className="mt-6 text-3xl font-bold text-emerald-400 drop-shadow">
-              {createdReservationStatus === "pending" ? "Request Submitted" : "Reservation Success"}
-            </h2>
-            <p className="mt-1 text-slate-300">{createdReservationMessage || "Booking saved."}</p>
-            <p className="mt-2 text-xs text-slate-400">
-              Status: <span className="font-semibold">{createdReservationStatus || "approved"}</span>
-            </p>
-
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={() => navigate("/dashboard")}
-                className="px-4 py-2 rounded-xl bg-white text-black font-medium hover:opacity-90"
-              >
-                ไปแดชบอร์ด
-              </button>
-              <button
-                onClick={() => navigate("/")}
-                className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/10"
-              >
-                กลับหน้าแรก
-              </button>
-              <button
-                onClick={() => {
-                  // เริ่มจองใหม่: รีเซ็ตสเต็ป + ค่าที่เลือก (โหมดปัจจุบันยังอยู่)
-                  resetAll();
-                  setStep(1);
-                }}
-                className="px-4 py-2 rounded-xl border border-emerald-400/40 text-emerald-300 hover:bg-emerald-400/10"
-              >
-                จองใหม่
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {successOverlay}
 
       {/* keyframes (Tailwind arbitrary, no config needed) */}
       <style>{`
