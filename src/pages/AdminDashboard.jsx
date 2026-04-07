@@ -1,20 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { reservationsAPI } from "../services/reservations.js";
-
-const roomUsageData = [
-  { room: "Room 1", usage: 76 },
-  { room: "Room 2", usage: 62 },
-  { room: "Room 3", usage: 84 },
-  { room: "Room 4", usage: 48 },
-  { room: "Lab 1", usage: 71 },
-];
-
-const systemAlerts = [
-  "Projector in Room 3 requires maintenance this week.",
-  "2 duplicate booking requests were auto-blocked today.",
-  "Weekly backup completed at 02:00 AM.",
-];
+import { roomAPI } from "../services/rooms.js";
+import { usersAPI } from "../services/users.js";
 
 export default function AdminDashboard() {
   const [pendingApprovals, setPendingApprovals] = useState([]);
@@ -23,9 +11,15 @@ export default function AdminDashboard() {
   const [adminMessage, setAdminMessage] = useState("");
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState("pending");
+  const [dashboardMetrics, setDashboardMetrics] = useState({
+    bookingsToday: 0,
+    totalRoom: 0,
+    pendingRoleApprovals: 0,
+  });
 
   useEffect(() => {
     loadPending();
+    loadAdminInsights();
   }, []);
 
   async function loadPending() {
@@ -42,6 +36,35 @@ export default function AdminDashboard() {
     }
   }
 
+  async function loadAdminInsights() {
+    try {
+      const [allReservations, roomPaged, teacherRequests] = await Promise.all([
+        reservationsAPI.list(),
+        roomAPI.list({ page: 1, limit: 200 }),
+        usersAPI.teacherRequests(),
+      ]);
+
+      const reservations = Array.isArray(allReservations) ? allReservations : [];
+      const rooms = Array.isArray(roomPaged?.items) ? roomPaged.items : [];
+      const roleRequests = Array.isArray(teacherRequests) ? teacherRequests : [];
+
+      const todayISO = new Date().toISOString().slice(0, 10);
+      const bookingsToday = reservations.filter((item) => {
+        const start = String(item?.start || item?.startTime || item?.startsAt || "");
+        return start.slice(0, 10) === todayISO;
+      }).length;
+
+      setDashboardMetrics({
+        bookingsToday,
+        totalRoom: rooms.length,
+        pendingRoleApprovals: roleRequests.length,
+      });
+    } catch (err) {
+      setAdminError(err?.message || "Failed to load dashboard insights from backend.");
+      setDashboardMetrics({ bookingsToday: 0, totalRoom: 0, pendingRoleApprovals: 0 });
+    }
+  }
+
   async function handleApprove(id) {
     setAdminError("");
     setAdminMessage("");
@@ -49,6 +72,7 @@ export default function AdminDashboard() {
       await reservationsAPI.approve(id, "approved");
       setAdminMessage("Reservation approved.");
       await loadPending();
+      await loadAdminInsights();
     } catch (err) {
       setAdminError(err?.message || "Cannot approve reservation.");
     }
@@ -62,6 +86,7 @@ export default function AdminDashboard() {
       await reservationsAPI.reject(id, note);
       setAdminMessage("Reservation rejected.");
       await loadPending();
+      await loadAdminInsights();
     } catch (err) {
       setAdminError(err?.message || "Cannot reject reservation.");
     }
@@ -84,8 +109,8 @@ export default function AdminDashboard() {
     });
 
     if (status === "all") return base;
-    return base.filter((item) => (item.status || "pending") === status);
-  }, [keyword, status]);
+    return base.filter((item) => String(item.status || "pending").toLowerCase() === status);
+  }, [pendingApprovals, keyword, status]);
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
@@ -100,15 +125,24 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2">
             <Link
               to="/admin-teacher-requests"
-              className="rounded-xl px-4 py-2.5 border border-white/20 bg-white/10 hover:bg-white/15 transition"
+              className="relative rounded-xl px-4 py-2.5 border border-white/20 bg-white/10 hover:bg-white/15 transition"
             >
               Teacher Requests
+              {dashboardMetrics.pendingRoleApprovals > 0 && (
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.9)]" />
+              )}
             </Link>
             <Link
               to="/admin-rooms"
               className="rounded-xl px-4 py-2.5 border border-white/20 bg-white/10 hover:bg-white/15 transition"
             >
               Manage Rooms
+            </Link>
+            <Link
+              to="/admin-transactions/1"
+              className="rounded-xl px-4 py-2.5 border border-white/20 bg-white/10 hover:bg-white/15 transition"
+            >
+              Manage Transactions
             </Link>
             <button className="rounded-xl px-4 py-2.5 bg-white text-black font-medium hover:opacity-90 transition">
               Export Report
@@ -132,13 +166,13 @@ export default function AdminDashboard() {
         )}
 
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label="Bookings Today" value="28" delta="+6 from yesterday" />
-          <MetricCard label="Pending Approvals" value={String(pendingApprovals.length)} delta="Needs review" />
-          <MetricCard label="Active Rooms" value="14" delta="2 under maintenance" />
-          <MetricCard label="Utilization Rate" value="73%" delta="Target: 80%" />
+          <MetricCard label="Bookings Today" value={String(dashboardMetrics.bookingsToday)} delta="From backend data" />
+          <MetricCard label="Pending Room Approvals" value={String(pendingApprovals.length)} delta="Needs review" />
+          <MetricCard label="Pending Role Approvals" value={String(dashboardMetrics.pendingRoleApprovals)} delta="Teacher role requests" />
+          <MetricCard label="Total Room" value={String(dashboardMetrics.totalRoom)} delta="From room service" />
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
+        <section>
           <div className="rounded-2xl border border-white/10 bg-white/[.04] backdrop-blur p-4">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h2 className="text-base font-medium">Approval Queue</h2>
@@ -160,7 +194,10 @@ export default function AdminDashboard() {
                   <option value="rejected">Rejected</option>
                 </select>
                 <button
-                  onClick={loadPending}
+                  onClick={() => {
+                    loadPending();
+                    loadAdminInsights();
+                  }}
                   className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
                 >
                   Refresh
@@ -181,7 +218,6 @@ export default function AdminDashboard() {
                 <table className="min-w-full text-sm">
                   <thead className="text-slate-300/80">
                     <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
-                      <th>ID</th>
                       <th>Requester</th>
                       <th>Room</th>
                       <th>Schedule</th>
@@ -192,7 +228,6 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-white/10">
                     {filteredApprovals.map((item) => (
                       <tr key={item.id || item._id} className="[&>td]:py-2.5 [&>td]:px-3">
-                        <td className="font-medium">{item.id || item._id}</td>
                         <td>{item.user?.name || item.user?.email || "-"}</td>
                         <td>{item.room?.name || item.roomName || "-"}</td>
                         <td>
@@ -222,28 +257,6 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
-
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/[.04] backdrop-blur p-4">
-              <h2 className="text-base font-medium mb-3">Room Utilization</h2>
-              <div className="space-y-3">
-                {roomUsageData.map((item) => (
-                  <UsageBar key={item.room} label={item.room} value={item.usage} />
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-white/[.04] backdrop-blur p-4">
-              <h2 className="text-base font-medium mb-3">System Alerts</h2>
-              <ul className="space-y-2 text-sm text-slate-200/90">
-                {systemAlerts.map((alert) => (
-                  <li key={alert} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                    {alert}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
         </section>
       </div>
     </div>
@@ -256,23 +269,6 @@ function MetricCard({ label, value, delta }) {
       <p className="text-xs text-slate-300/80">{label}</p>
       <p className="text-2xl font-semibold mt-1">{value}</p>
       <p className="text-xs text-slate-400 mt-1">{delta}</p>
-    </div>
-  );
-}
-
-function UsageBar({ label, value }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between text-xs text-slate-300/80 mb-1">
-        <span>{label}</span>
-        <span>{value}%</span>
-      </div>
-      <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400"
-          style={{ width: `${value}%` }}
-        />
-      </div>
     </div>
   );
 }

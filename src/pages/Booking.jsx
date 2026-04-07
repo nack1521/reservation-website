@@ -461,11 +461,13 @@ export default function Booking() {
       <div className="mx-auto max-w-6xl w-full px-4 pt-6 md:pt-8">
         <div className="flex flex-col items-center text-center">
           <div className="w-full md:hidden">
+            {step < 4 && (
             <Stepper
             step={step}
             total={totalSteps}
             labels={stepLabels}
             />
+            )}
           </div>
 
           {/* ปุ่มเลือกโหมด */}
@@ -504,7 +506,9 @@ export default function Booking() {
       <div className="relative z-10 mx-auto max-w-6xl w-full px-4 py-6 flex-1">
         <div className="md:grid md:grid-cols-[220px_1fr] md:gap-4 lg:gap-6 h-full">
           <aside className="hidden md:block">
+            {step < 4 && (
             <StepSidebar step={step} labels={stepLabels} />
+            )}
           </aside>
 
           <div
@@ -1135,7 +1139,7 @@ export default function Booking() {
 
       {/* STEP 4 — Success overlay */}
       {step === 4 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
           <div className="text-center animate-[appear_400ms_ease-out]">
             <div className="mx-auto w-40 h-40 rounded-full bg-emerald-400/15 ring-1 ring-emerald-300/40 shadow-[0_0_60px_rgba(16,185,129,0.45)] grid place-items-center">
               <div className="w-24 h-24 rounded-full bg-emerald-400 grid place-items-center shadow-[0_10px_40px_rgba(16,185,129,0.7)]">

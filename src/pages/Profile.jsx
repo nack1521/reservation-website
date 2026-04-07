@@ -56,10 +56,20 @@ export default function Profile() {
   async function saveProfile(e) {
     e.preventDefault();
 
+    const normalizedPhone = String(phone || "").replace(/\D/g, "");
+    if (normalizedPhone.length !== 10) {
+      setSaveState({
+        saving: false,
+        message: "",
+        error: "Phone number must contain exactly 10 digits.",
+      });
+      return;
+    }
+
     setSaveState({ saving: true, message: "", error: "" });
     try {
       const payload = {
-        phoneNumber: phone.trim(),
+        phoneNumber: normalizedPhone,
       };
       const response = await usersAPI.updateMe(payload);
       const user = response?.user && typeof response.user === "object" ? response.user : response;
@@ -276,9 +286,14 @@ export default function Profile() {
                   <input
                     type="tel"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    inputMode="numeric"
+                    pattern="[0-9]{10}"
+                    maxLength={10}
+                    placeholder="0812345678"
                     className="w-full rounded-xl bg-zinc-950/70 border border-white/10 px-3 py-2.5 text-slate-200"
                   />
+                  <p className="mt-1 text-xs text-slate-400">Enter exactly 10 digits (numbers only).</p>
                 </div>
               </form>
             </SectionCard>

@@ -19,6 +19,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import AdminRooms from "./pages/AdminRooms.jsx";
 import AdminTeacherRequests from "./pages/AdminTeacherRequests.jsx";
+import AdminTransactions from "./pages/AdminTransactions.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import Login from "./pages/Login.jsx";
 import UserGuide from "./pages/UserGuide.jsx";
@@ -105,6 +106,8 @@ const router = createBrowserRouter([
               { path: "/admin-dashboard", element: <AdminDashboard /> },
               { path: "/admin-rooms", element: <AdminRooms /> },
               { path: "/admin-teacher-requests", element: <AdminTeacherRequests /> },
+              { path: "/admin-transactions", element: <Navigate to="/admin-transactions/1" replace /> },
+              { path: "/admin-transactions/:page", element: <AdminTransactions /> },
             ],
           },
           { path: "/user-guide", element: <UserGuide /> },

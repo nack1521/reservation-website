@@ -1,7 +1,10 @@
 // src/layouts/SiteLayout.jsx
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { authAPI } from "../services/api.googleAuth.js";
+import { reservationsAPI } from "../services/reservations.js";
+import { usersAPI } from "../services/users.js";
 
 function normalizeRoleToken(value) {
   const normalized = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
@@ -39,6 +42,7 @@ export default function SiteLayout() {
   const loc = useLocation();
   const roles = readRoles();
   const canAccessAdmin = roles.includes("admin") || roles.includes("super_admin");
+  const [hasAdminNotifications, setHasAdminNotifications] = useState(false);
 
   function clearAuthAndRedirect() {
     localStorage.removeItem("auth");
@@ -107,6 +111,55 @@ export default function SiteLayout() {
     };
   }, [nav]);
 
+  useEffect(() => {
+    let stopped = false;
+
+    async function loadAdminNotifications() {
+      if (!canAccessAdmin || stopped) {
+        if (!stopped) setHasAdminNotifications(false);
+        return;
+      }
+
+      try {
+        const [pendingRooms, pendingRoles] = await Promise.all([
+          reservationsAPI.pending(),
+          usersAPI.teacherRequests(),
+        ]);
+
+        if (stopped) return;
+
+        const pendingRoomCount = Array.isArray(pendingRooms) ? pendingRooms.length : 0;
+        const pendingRoleCount = Array.isArray(pendingRoles) ? pendingRoles.length : 0;
+        setHasAdminNotifications(pendingRoomCount + pendingRoleCount > 0);
+      } catch {
+        if (!stopped) setHasAdminNotifications(false);
+      }
+    }
+
+    function onVisible() {
+      if (document.visibilityState === "visible") loadAdminNotifications();
+    }
+
+    loadAdminNotifications();
+    const id = window.setInterval(loadAdminNotifications, 60 * 1000);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [canAccessAdmin]);
+
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    const mainEl = document.querySelector("main");
+    if (mainEl) mainEl.scrollTop = 0;
+  }, [loc.pathname, loc.key]);
+
   return (
     <div className="min-h-screen flex flex-col bg-animated bg-glow text-white overflow-x-hidden">
       {/* NAVBAR */}
@@ -125,8 +178,7 @@ export default function SiteLayout() {
             <NavItem to="/">Home</NavItem>
             <NavItem to="/book">Rooms</NavItem>
             <NavItem to="/dashboard">Dashboard</NavItem>
-            {canAccessAdmin && <NavItem to="/admin-dashboard">Admin</NavItem>}
-            {canAccessAdmin && <NavItem to="/admin-teacher-requests">Teacher Requests</NavItem>}
+            {canAccessAdmin && <NavItem to="/admin-dashboard" showDot={hasAdminNotifications}>Admin</NavItem>}
             <NavItem to="/user-guide">User Guide</NavItem>
           </div>
 
@@ -147,7 +199,7 @@ export default function SiteLayout() {
 }
 
 /* ------------ Sub components ------------ */
-function NavItem({ to, children }) {
+function NavItem({ to, children, showDot = false }) {
   return (
     <NavLink
       to={to}
@@ -162,7 +214,12 @@ function NavItem({ to, children }) {
           .join(" ")
       }
     >
-      {children}
+      <span className="relative inline-flex items-center">
+        {children}
+        {showDot && (
+          <span className="absolute -right-2 -top-1 h-2.5 w-2.5 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]" />
+        )}
+      </span>
     </NavLink>
   );
 }
@@ -186,25 +243,52 @@ function SearchButton() {
 function UserProfile() {
   const [open, setOpen] = useState(false);
   const popRef = useRef(null);
+  const menuRef = useRef(null);
+  const triggerRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const nav = useNavigate();
+  const loc = useLocation();
 
   const username = localStorage.getItem("authUser") || "USER";
   const email = localStorage.getItem("authEmail") || "student@kmutt.ac.th";
 
   useEffect(() => {
     function onDocClick(e) {
-      if (popRef.current && !popRef.current.contains(e.target)) setOpen(false);
+      const inTrigger = popRef.current && popRef.current.contains(e.target);
+      const inMenu = menuRef.current && menuRef.current.contains(e.target);
+      if (!inTrigger && !inMenu) setOpen(false);
     }
     function onKey(e) {
       if (e.key === "Escape") setOpen(false);
     }
-    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("click", onDocClick);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("click", onDocClick);
       document.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    function updateMenuPosition() {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const menuWidth = 224;
+      const left = Math.max(8, Math.min(window.innerWidth - menuWidth - 8, rect.right - menuWidth));
+      setMenuPos({ top: rect.bottom + 8, left });
+    }
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [open]);
 
   function logout() {
     localStorage.removeItem("auth");
@@ -216,12 +300,38 @@ function UserProfile() {
     nav("/login", { replace: true });
   }
 
+  function goProfile() {
+    setOpen(false);
+
+    if (loc.pathname === "/profile") {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      const mainEl = document.querySelector("main");
+      if (mainEl) mainEl.scrollTop = 0;
+      return;
+    }
+
+    nav("/profile");
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      const mainEl = document.querySelector("main");
+      if (mainEl) mainEl.scrollTop = 0;
+    });
+  }
+
   return (
-    <div ref={popRef} className="relative">
+    <div ref={popRef} className="relative z-[70]">
       <button
+        ref={triggerRef}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         className="flex items-center gap-2 h-10 rounded-full border border-white/10 bg-white/10 hover:bg-white/20 transition px-2"
       >
         <img
@@ -246,32 +356,29 @@ function UserProfile() {
         </svg>
       </button>
 
-      <div
-        role="menu"
-        className={`absolute right-0 mt-2 w-56 rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-lg shadow-lg transition origin-top-right ${
-          open ? "opacity-100 scale-100 pointer-events-auto" : "opacity-0 scale-95 pointer-events-none"
-        }`}
-      >
-        <div className="px-4 py-3 border-b border-white/10">
-          <p className="text-sm font-medium text-white">Welcome, {username}</p>
-          <p className="text-xs text-slate-400">{email}</p>
-        </div>
-        <div className="py-1">
-          <DropdownButton
-            onClick={() => {
-              setOpen(false);
-              nav("/profile"); // ต้องมี route /profile ด้วย
-            }}
-          >
-            View Profile
-          </DropdownButton>
-          <DropdownButton onClick={() => setOpen(false)}>Settings</DropdownButton>
-          <DropdownButton onClick={() => setOpen(false)}>My Bookings</DropdownButton>
-          <DropdownButton onClick={logout} danger>
-            Logout
-          </DropdownButton>
-        </div>
-      </div>
+      {open
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              onClick={(e) => e.stopPropagation()}
+              className="fixed z-[1200] w-56 rounded-xl border border-white/10 bg-zinc-900/95 backdrop-blur-lg shadow-lg"
+              style={{ top: menuPos.top, left: menuPos.left }}
+            >
+              <div className="px-4 py-3 border-b border-white/10">
+                <p className="text-sm font-medium text-white">Welcome, {username}</p>
+                <p className="text-xs text-slate-400">{email}</p>
+              </div>
+              <div className="py-1">
+                <DropdownButton onClick={goProfile}>View Profile</DropdownButton>
+                <DropdownButton onClick={logout} danger>
+                  Logout
+                </DropdownButton>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

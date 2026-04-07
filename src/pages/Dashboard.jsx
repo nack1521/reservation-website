@@ -67,7 +67,7 @@ export default function Dashboard() {
   const kpiToday = bookings.filter(b=>b.date===todayISO).length;
   const kpiUpcoming = summary.upcoming;
   const kpiPending = summary.pending;
-  const kpiHistory = summary.history;
+  const kpiHistory = Number(summary.total ?? bookings.length);
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white flex flex-col">

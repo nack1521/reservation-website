@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { roomAPI } from "../services/rooms.js";
 
 const emptyForm = {
@@ -11,14 +12,17 @@ const emptyForm = {
 };
 
 export default function AdminRooms() {
+  const PAGE_SIZE = 10;
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState("");
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     fetchRooms();
@@ -43,7 +47,12 @@ export default function AdminRooms() {
 
   function resetForm() {
     setForm(emptyForm);
+  }
+
+  function resetEdit() {
     setEditingId("");
+    setIsEditOpen(false);
+    setForm(emptyForm);
   }
 
   function startEdit(room) {
@@ -56,6 +65,7 @@ export default function AdminRooms() {
       capacity: String(room.capacity ?? ""),
       location: room.location || "",
     });
+    setIsEditOpen(true);
     setMessage("");
   }
 
@@ -74,12 +84,13 @@ export default function AdminRooms() {
       if (editingId) {
         await roomAPI.update(editingId, payload);
         setMessage("Room updated successfully.");
+        resetEdit();
       } else {
         await roomAPI.create(payload);
         setMessage("Room created successfully.");
+        resetForm();
       }
 
-      resetForm();
       await fetchRooms();
     } catch (err) {
       setError(err?.message || "Cannot save room.");
@@ -96,7 +107,7 @@ export default function AdminRooms() {
     setMessage("");
     try {
       await roomAPI.remove(room.id);
-      if (editingId === room.id) resetForm();
+      if (editingId === room.id) resetEdit();
       setMessage("Room deleted successfully.");
       await fetchRooms();
     } catch (err) {
@@ -114,6 +125,130 @@ export default function AdminRooms() {
         .includes(q)
     );
   }, [rooms, query]);
+
+  const editModal = isEditOpen
+    ? createPortal(
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) resetEdit();
+          }}
+        >
+          <form
+            onSubmit={onSubmit}
+            className="w-full max-w-2xl rounded-2xl border border-white/10 bg-zinc-950/95 p-4 space-y-3 shadow-2xl text-slate-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-medium">Edit Room</h2>
+              <button
+                type="button"
+                onClick={resetEdit}
+                className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15"
+              >
+                Close
+              </button>
+            </div>
+
+            <Field label="Name" required>
+              <input
+                value={form.name}
+                onChange={(e) => setField("name", e.target.value)}
+                required
+                className="w-full rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2.5 text-slate-100"
+              />
+            </Field>
+
+            <Field label="Description">
+              <textarea
+                value={form.description}
+                onChange={(e) => setField("description", e.target.value)}
+                rows={3}
+                className="w-full rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2.5 text-slate-100"
+              />
+            </Field>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Floor">
+                <input
+                  value={form.floor}
+                  onChange={(e) => setField("floor", e.target.value)}
+                  placeholder="1"
+                  className="w-full rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2.5 text-slate-100"
+                />
+              </Field>
+
+              <Field label="Type">
+                <input
+                  value={form.type}
+                  onChange={(e) => setField("type", e.target.value)}
+                  placeholder="Lecture"
+                  className="w-full rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2.5 text-slate-100"
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Capacity">
+                <input
+                  type="number"
+                  min="0"
+                  value={form.capacity}
+                  onChange={(e) => setField("capacity", e.target.value)}
+                  placeholder="60"
+                  className="w-full rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2.5 text-slate-100"
+                />
+              </Field>
+
+              <Field label="Location">
+                <input
+                  value={form.location}
+                  onChange={(e) => setField("location", e.target.value)}
+                  placeholder="Engineering Building A"
+                  className="w-full rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2.5 text-slate-100"
+                />
+              </Field>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-xl px-4 py-2 bg-emerald-400 text-black font-medium hover:bg-emerald-300 disabled:opacity-50"
+              >
+                {submitting ? "Saving..." : "Update Room"}
+              </button>
+              <button
+                type="button"
+                onClick={resetEdit}
+                className="rounded-xl px-4 py-2 border border-white/20 bg-white/10 hover:bg-white/15"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>,
+        document.body
+      )
+    : null;
+
+  const totalPages = Math.max(1, Math.ceil(filteredRooms.length / PAGE_SIZE));
+
+  const pagedRooms = useMemo(() => {
+    const safePage = Math.min(Math.max(page, 1), totalPages);
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filteredRooms.slice(start, start + PAGE_SIZE);
+  }, [filteredRooms, page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
@@ -140,7 +275,7 @@ export default function AdminRooms() {
 
         <section className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
           <form onSubmit={onSubmit} className="rounded-2xl border border-white/10 bg-white/[.04] backdrop-blur p-4 space-y-3">
-            <h2 className="text-base font-medium">{editingId ? "Edit Room" : "Create Room"}</h2>
+            <h2 className="text-base font-medium">Create Room</h2>
 
             <Field label="Name" required>
               <input
@@ -208,17 +343,8 @@ export default function AdminRooms() {
                 disabled={submitting}
                 className="rounded-xl px-4 py-2 bg-emerald-400 text-black font-medium hover:bg-emerald-300 disabled:opacity-50"
               >
-                {submitting ? "Saving..." : editingId ? "Update Room" : "Create Room"}
+                {submitting ? "Saving..." : "Create Room"}
               </button>
-              {editingId && (
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="rounded-xl px-4 py-2 border border-white/20 bg-white/10 hover:bg-white/15"
-                >
-                  Cancel Edit
-                </button>
-              )}
             </div>
           </form>
 
@@ -238,51 +364,77 @@ export default function AdminRooms() {
             ) : filteredRooms.length === 0 ? (
               <p className="text-sm text-slate-300/80">No room found.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="text-slate-300/80">
-                    <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
-                      <th>Name</th>
-                      <th>Floor</th>
-                      <th>Type</th>
-                      <th>Capacity</th>
-                      <th>Location</th>
-                      <th className="text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/10">
-                    {filteredRooms.map((room) => (
-                      <tr key={room.id} className="[&>td]:py-2.5 [&>td]:px-3">
-                        <td className="font-medium">{room.name}</td>
-                        <td>{room.floor || "-"}</td>
-                        <td>{room.type || "-"}</td>
-                        <td>{room.capacity ?? "-"}</td>
-                        <td>{room.location || "-"}</td>
-                        <td className="text-right">
-                          <div className="inline-flex gap-2">
-                            <button
-                              onClick={() => startEdit(room)}
-                              className="rounded-lg border border-cyan-300/30 bg-cyan-400/10 px-2.5 py-1 text-cyan-100 hover:bg-cyan-400/20"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => onDelete(room)}
-                              className="rounded-lg border border-rose-300/30 bg-rose-400/10 px-2.5 py-1 text-rose-100 hover:bg-rose-400/20"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
+              <div className="space-y-3">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="text-slate-300/80">
+                      <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
+                        <th>Name</th>
+                        <th>Floor</th>
+                        <th>Type</th>
+                        <th>Capacity</th>
+                        <th>Location</th>
+                        <th className="text-right">Action</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-white/10">
+                      {pagedRooms.map((room) => (
+                        <tr key={room.id} className="[&>td]:py-2.5 [&>td]:px-3">
+                          <td className="font-medium">{room.name}</td>
+                          <td>{room.floor || "-"}</td>
+                          <td>{room.type || "-"}</td>
+                          <td>{room.capacity ?? "-"}</td>
+                          <td>{room.location || "-"}</td>
+                          <td className="text-right">
+                            <div className="inline-flex gap-2">
+                              <button
+                                onClick={() => startEdit(room)}
+                                className="rounded-lg border border-cyan-300/30 bg-cyan-400/10 px-2.5 py-1 text-cyan-100 hover:bg-cyan-400/20"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => onDelete(room)}
+                                className="rounded-lg border border-rose-300/30 bg-rose-400/10 px-2.5 py-1 text-rose-100 hover:bg-rose-400/20"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <p className="text-slate-400">
+                    Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, filteredRooms.length)} of {filteredRooms.length}
+                  </p>
+                  <div className="inline-flex items-center gap-2">
+                    <button
+                      onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                      disabled={page <= 1}
+                      className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm disabled:opacity-50"
+                    >
+                      Prev
+                    </button>
+                    <span className="text-slate-200">{page} / {totalPages}</span>
+                    <button
+                      onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                      disabled={page >= totalPages}
+                      className="rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         </section>
       </div>
+      {editModal}
     </div>
   );
 }

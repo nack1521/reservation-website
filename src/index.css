@@ -35,6 +35,8 @@
     filter: blur(120px);
     opacity: 0.35;
     animation: floatGlow 18s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
   }
 
   .bg-glow::before {
@@ -57,6 +59,11 @@
   .bg-glow {
     position: relative;
     overflow: hidden;
+  }
+
+  .bg-glow > * {
+    position: relative;
+    z-index: 1;
   }
 }
 

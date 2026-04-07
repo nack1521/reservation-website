@@ -56,7 +56,7 @@ export default function ReservationDetail() {
 
   const canCancel = useMemo(() => {
     if (!booking) return false;
-    return booking.status === "upcoming" && !!booking.id;
+    return ["upcoming", "pending"].includes(booking.status) && !!booking.id;
   }, [booking]);
 
   async function handleCancel() {
@@ -116,7 +116,7 @@ export default function ReservationDetail() {
         <div className="rounded-2xl border border-white/10 bg-white/[.04] backdrop-blur p-5 space-y-5">
           <div>
             <h1 className="text-2xl font-semibold">รายละเอียดการจอง</h1>
-            <p className="text-sm text-slate-300/80 mt-1">ตรวจสอบรายละเอียดและยกเลิกได้เฉพาะรายการที่กำลังจะมาถึง</p>
+            <p className="text-sm text-slate-300/80 mt-1">ตรวจสอบรายละเอียดและยกเลิกได้สำหรับรายการรออนุมัติหรือกำลังจะมาถึง</p>
           </div>
 
           {success && (
@@ -150,7 +150,7 @@ export default function ReservationDetail() {
                 disabled={canceling}
                 className="rounded-xl px-4 py-2.5 text-sm border border-rose-300/30 text-rose-200 bg-rose-400/10 hover:bg-rose-400/15 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {canceling ? "กำลังยกเลิก..." : "ยกเลิกการจอง"}
+                {canceling ? "กำลังยกเลิก..." : booking.status === "pending" ? "ยกเลิกคำขอ" : "ยกเลิกการจอง"}
               </button>
             ) : (
               <span className="text-sm text-slate-400">รายการนี้ไม่สามารถยกเลิกได้</span>

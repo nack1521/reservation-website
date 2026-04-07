@@ -39,6 +39,7 @@ async function apiFetch(endpoint, options = {}) {
   const {
     auth = false,
     withCredentials = false,
+    includeResponseMeta = false,
     headers: incomingHeaders = {},
     ...rest
   } = options;
@@ -81,7 +82,17 @@ async function apiFetch(endpoint, options = {}) {
       throw new Error(error.message || `HTTP ${response.status}`);
     }
 
-    return await parseSuccessBody(response);
+    const data = await parseSuccessBody(response);
+    if (!includeResponseMeta) return data;
+
+    return {
+      data,
+      status: response.status,
+      headers: {
+        xTotalCount: response.headers.get("x-total-count"),
+        link: response.headers.get("link"),
+      },
+    };
   } catch (error) {
     console.error("API Error:", error);
     if (error?.message === "Failed to fetch") {
