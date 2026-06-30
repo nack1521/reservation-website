@@ -91,7 +91,7 @@ function shouldEnrichRoles(roles = []) {
 function inferDefaultRoleByEmail(email) {
   const normalized = String(email || "").toLowerCase().trim();
   if (normalized.endsWith("@mail.kmutt.ac.th")) return "student";
-  return "user";
+  return "";
 }
 
 function isAdminApp() {
@@ -116,6 +116,12 @@ export default function Login() {
 
   const applyUserToSession = useCallback((rawUser, preferredRoles = []) => {
     const user = resolveUserFromAuthPayload(rawUser);
+    const normalizedEmail = String(user?.email || "").toLowerCase().trim();
+    if (!normalizedEmail.endsWith("@mail.kmutt.ac.th")) {
+      setStatus("error");
+      setError("Please use your @mail.kmutt.ac.th Google account.");
+      return false;
+    }
     const extractedRoles = extractRoles(user);
     const mergedRoles = mergeRoles(preferredRoles, extractedRoles);
     const roles = mergedRoles.length ? mergedRoles : [inferDefaultRoleByEmail(user?.email)];
@@ -208,16 +214,6 @@ export default function Login() {
     }
   }, [tryFetchUserInfo]);
 
-  // Handle OAuth callback
-  useEffect(() => {
-    // Listen for popup messages on mount
-    window.addEventListener("message", handleOAuthCallback);
-    
-    return () => {
-      window.removeEventListener("message", handleOAuthCallback);
-    };
-  }, []);
-
   function handleGoogleLogin() {
     oauthHandledRef.current = false;
     setStatus("loading");
@@ -252,7 +248,7 @@ export default function Login() {
     }, 500);
   }
 
-  function handleOAuthCallback(event) {
+  const handleOAuthCallback = useCallback((event) => {
     // Verify origin
     const expectedOrigin = apiOrigin;
     if (event.origin !== expectedOrigin) {
@@ -277,7 +273,16 @@ export default function Login() {
       setError(errorMsg || "Login failed");
       setStatus("error");
     }
-  }
+  }, [apiOrigin, applyUserToSession, runSessionBootstrap]);
+
+  // Handle OAuth callback
+  useEffect(() => {
+    window.addEventListener("message", handleOAuthCallback);
+
+    return () => {
+      window.removeEventListener("message", handleOAuthCallback);
+    };
+  }, [handleOAuthCallback]);
 
   useEffect(() => {
     const id = "login-local-animations";
@@ -344,7 +349,7 @@ export default function Login() {
           </div>
           <h1 className="text-xl font-semibold text-center">Sign in</h1>
           <p className="mt-1 text-slate-400 text-sm text-center">
-            Sign in with your Google account to continue
+            Use your @mail.kmutt.ac.th Google account to continue
           </p>
 
           <div className="mt-6 space-y-4">
@@ -419,7 +424,7 @@ export default function Login() {
                         fill="#EA4335"
                       />
                     </svg>
-                    <span>Sign in with Google</span>
+                    <span>Sign in with KMUTT Google</span>
                   </>
                 )}
               </button>

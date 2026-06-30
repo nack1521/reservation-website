@@ -25,5 +25,5 @@ export const authAPI = {
   /**
    * Logout user
    */
-  logout: () => apiFetch("/auth/logout", { method: "GET", withCredentials: true }),
+  logout: () => apiFetch("/auth/logout", { method: "POST", withCredentials: true }),
 };

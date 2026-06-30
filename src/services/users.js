@@ -61,12 +61,6 @@ async function fetchUsersWithFallback(pathSuffix, options) {
 }
 
 export const usersAPI = {
-  register: ({ email, password, name }) =>
-    fetchUsersWithFallback(`/register`, {
-      method: "POST",
-      body: JSON.stringify({ email, password, name }),
-    }),
-
   requestTeacherRole: () =>
     fetchUsersWithFallback(`/me/request-teacher`, {
       method: "POST",
