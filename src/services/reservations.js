@@ -148,11 +148,22 @@ export const reservationsAPI = {
       body: JSON.stringify(payload),
     }),
 
+  detail: (id) =>
+    apiFetch(`${RES_BASE}/${id}`, {
+      withCredentials: true,
+    }),
+
   cancel: (id) =>
     apiFetch(`${RES_BASE}/${id}/cancel`, {
       method: "PATCH",
       withCredentials: true,
       auth: true,
+    }),
+
+  checkIn: (id) =>
+    apiFetch(`${RES_BASE}/${id}/check-in`, {
+      method: "PATCH",
+      withCredentials: true,
     }),
 
   remove: (id) =>

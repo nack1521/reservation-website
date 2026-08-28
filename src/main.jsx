@@ -5,8 +5,6 @@ import {
   createBrowserRouter,
   RouterProvider,
   Navigate,
-  Outlet,
-  useLocation,
 } from "react-router-dom";
 
 import "./index.css";
@@ -25,63 +23,8 @@ import Login from "./pages/Login.jsx";
 import UserGuide from "./pages/UserGuide.jsx";
 import Profile from "./pages/Profile.jsx";
 import ReservationDetail from "./pages/ReservationDetail.jsx";
-
-/* ---------- Auth helpers ---------- */
-function isAuthed() {
-  return localStorage.getItem("auth") === "true";
-}
-
-function normalizeRoleToken(value) {
-  const normalized = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
-  if (normalized === "superadmin" || normalized === "super_admin") return "super_admin";
-  if (normalized === "administrator") return "admin";
-  return normalized;
-}
-
-function readRoles() {
-  try {
-    const raw = localStorage.getItem("authRoles");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const items = parsed
-          .map((r) => normalizeRoleToken(r))
-          .filter(Boolean);
-        if (items.length) return items;
-      }
-    }
-  } catch {
-    // ignore malformed authRoles value
-  }
-
-  const single = normalizeRoleToken(localStorage.getItem("authRole") || "");
-  if (single) return [single];
-
-  const email = String(localStorage.getItem("authEmail") || "").toLowerCase().trim();
-  if (email.endsWith("@mail.kmutt.ac.th")) return ["student"];
-  return ["user"];
-}
-
-function isAdminLike() {
-  const roles = readRoles();
-  return roles.includes("admin") || roles.includes("super_admin");
-}
-
-function RequireAuth() {
-  const location = useLocation();
-  if (!isAuthed()) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-  return <Outlet />;
-}
-
-function RequireAdmin() {
-  const location = useLocation();
-  if (!isAdminLike()) {
-    return <Navigate to="/dashboard" replace state={{ from: location }} />;
-  }
-  return <Outlet />;
-}
+import AuthProvider from "./auth/AuthProvider.jsx";
+import { RequireAdmin, RequireAuth } from "./auth/RouteGuards.jsx";
 
 /* ---------- Router ---------- */
 const router = createBrowserRouter([
@@ -123,6 +66,8 @@ const router = createBrowserRouter([
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <RouterProvider router={router} />
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
   </React.StrictMode>
 );

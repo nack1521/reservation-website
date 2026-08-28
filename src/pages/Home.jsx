@@ -1,39 +1,9 @@
 // src/pages/Home.jsx
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { reservationsAPI } from "../services/reservations.js";
 
-/* ใช้ชื่อชั้นเพื่อส่งไปหน้า Success เมื่อกด "จองทันที" */
-const FLOOR_LABEL = {
-  2: "ห้องประชุม",
-  3: "สาขาวิชาครุศาสตร์โยธา",
-  4: "สาขาวิชาครุศาสตร์เครื่องกล",
-  5: "สาขาวิชาครุศาสตร์ไฟฟ้า",
-  6: "สาขาวิชาวิทยาการคอมพิวเตอร์ประยุกต์-มัลติมีเดีย",
-  7: "สาขาวิชาครุศาสตร์อุตสาหการ",
-  8: "สาขาวิชาเทคโนโลยีบรรจุภัณฑ์และการพิมพ์",
-  9: "สาขาวิชาวิทยาการคอมพิวเตอร์ประยุกต์-มัลติมีเดีย",
-};
-
 export default function Home() {
-  const nav = useNavigate();
-
-  /** ส่งผู้ใช้ไปหน้า Success พร้อม payload จริง (กดจองจาก “แนะนำประจำวัน”) */
-  function bookNow(rec) {
-    const todayISO = new Date().toISOString().slice(0, 10);
-    const payload = {
-      roomName: rec.name,
-      floor: String(rec.floor),
-      floorLabel: FLOOR_LABEL[rec.floor] ?? `ชั้น ${rec.floor}`,
-      dateISO: todayISO,
-      timeRangeLabel: rec.slot || "13:00-14:00",
-      type: rec.type,
-      capacity: rec.seats,
-      addons: [],
-    };
-    nav("/success", { state: payload });
-  }
-
   return (
     <div className="relative min-h-[calc(100vh-64px)] bg-animated bg-glow overflow-hidden text-white">
       <BgGlow />
@@ -171,186 +141,6 @@ function Shortcut({ to, title, desc }) {
       <div className="text-white font-semibold">{title}</div>
       <div className="text-sm text-slate-300/90">{desc}</div>
     </Link>
-  );
-}
-
-/* Quick Search (เวอร์ชันมีชิปลัด) */
-function QuickSearchCard() {
-  const nav = useNavigate();
-  const todayISO = new Date().toISOString().slice(0, 10);
-
-  const [date, setDate] = useState(todayISO);
-  const [slot, setSlot] = useState("13:00-14:00");
-  const [type, setType] = useState("ทั้งหมด");
-
-  const setToday = () => setDate(todayISO);
-  const setTomorrow = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    setDate(d.toISOString().slice(0, 10));
-  };
-  const setMorning = () => setSlot("09:00-10:00");
-  const setAfternoon = () => setSlot("14:00-15:00");
-
-  function submit(e) {
-    e.preventDefault();
-    const q = new URLSearchParams({ preview: "1", date, slot, type }).toString();
-    nav(`/book?${q}`);
-  }
-
-  return (
-    <form
-      onSubmit={submit}
-      className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5 backdrop-blur"
-    >
-      <div className="flex flex-wrap gap-2 mb-3">
-        <Chip onClick={setToday}>วันนี้</Chip>
-        <Chip onClick={setTomorrow}>พรุ่งนี้</Chip>
-        <Chip onClick={setMorning}>ช่วงเช้า</Chip>
-        <Chip onClick={setAfternoon}>ช่วงบ่าย</Chip>
-        {["Lecture", "Computer Lab", "Seminar"].map((t) => (
-          <Chip key={t} onClick={() => setType(t)}>
-            {t}
-          </Chip>
-        ))}
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="วันที่">
-          <input
-            type="date"
-            value={date}
-            min={todayISO}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full rounded-xl bg-zinc-950/70 border border-white/10 px-3 py-2.5 text-slate-200 focus:ring-2 focus:ring-emerald-400/30"
-          />
-        </Field>
-        <Field label="ช่วงเวลา">
-          <select
-            value={slot}
-            onChange={(e) => setSlot(e.target.value)}
-            className="w-full rounded-xl bg-zinc-950/70 border border-white/10 px-3 py-2.5 text-slate-200"
-          >
-            {[
-              "08:00-09:00",
-              "09:00-10:00",
-              "10:00-11:00",
-              "11:00-12:00",
-              "13:00-14:00",
-              "14:00-15:00",
-              "15:00-16:00",
-              "16:00-17:00",
-            ].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="ประเภทห้อง">
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-            className="w-full rounded-xl bg-zinc-950/70 border border-white/10 px-3 py-2.5 text-slate-200"
-          >
-            {[
-              "ทั้งหมด",
-              "Lecture",
-              "Computer Lab",
-              "Seminar",
-              "Workshop",
-              "Electronics Lab",
-            ].map((t) => (
-              <option key={t}>{t}</option>
-            ))}
-          </select>
-        </Field>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          type="submit"
-          className="rounded-xl px-4 py-2.5 bg-white text-black font-medium hover:opacity-90"
-        >
-          ค้นหาห้องว่าง
-        </button>
-        <Link to="/book" className="rounded-xl px-4 py-2.5 border border-white/10 hover:bg-white/10">
-          ไปหน้าจองแบบละเอียด
-        </Link>
-      </div>
-    </form>
-  );
-}
-
-/* ห้องแนะนำประจำวัน + จองทันที */
-function RecommendedDaily({ onBook }) {
-  const RECOMMENDED = [
-    {
-      name: "Room 2",
-      type: "Computer Lab",
-      seats: 30,
-      floor: 6,
-      slot: "13:00-14:00",
-      purposes: ["เรียนเขียนโปรแกรม", "สอบ Lab", "สอนเสริม"],
-    },
-    {
-      name: "Room 5",
-      type: "Lecture",
-      seats: 60,
-      floor: 5,
-      slot: "14:00-15:00",
-      purposes: ["บรรยายคลาสใหญ่", "ประชุมคณะ", "สัมมนา"],
-    },
-    {
-      name: "Room 1",
-      type: "Seminar",
-      seats: 20,
-      floor: 7,
-      slot: "15:00-16:00",
-      purposes: ["ประชุมทีมเล็ก", "เวิร์กชอปย่อย", "Pitching"],
-    },
-  ];
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-5">
-      <div className="text-sm text-slate-300 mb-3">ห้องแนะนำประจำวัน</div>
-
-      {RECOMMENDED.map((r) => (
-        <div
-          key={r.name}
-          className="relative rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 mb-3 last:mb-0 flex items-center justify-between gap-3"
-        >
-          {/* เนื้อหา */}
-          <div className="min-w-0">
-            <div className="font-medium text-white truncate">{r.name}</div>
-            <div className="text-xs text-slate-400">
-              {r.type} · {r.seats} ที่นั่ง · ชั้น {r.floor}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {r.purposes.map((p) => (
-                <span
-                  key={p}
-                  className="text-[11px] px-2 py-0.5 rounded-full border border-white/10 bg-white/5 text-slate-300"
-                >
-                  {p}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* ปุ่มจองทันที */}
-          <button
-            type="button"
-            onClick={() => onBook(r)}
-            className="relative z-10 shrink-0 text-xs rounded-lg px-3 py-1.5 bg-white text-black font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-white/30"
-          >
-            จอง
-          </button>
-        </div>
-      ))}
-
-      <p className="mt-3 text-[11px] text-slate-400">
-        * กด “จอง” จะยืนยันข้อมูลพื้นฐานและไปหน้าใบสลิปทันที (แก้ไขได้ภายหลังในแดชบอร์ด)
-      </p>
-    </div>
   );
 }
 
@@ -527,14 +317,6 @@ function formatTime(date) {
   });
 }
 
-function Field({ label, children }) {
-  return (
-    <label className="block text-xs text-slate-400">
-      {label}
-      <div className="mt-1.5">{children}</div>
-    </label>
-  );
-}
 function Feature({ title, desc }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[.04] backdrop-blur-md p-5 shadow-[0_20px_80px_-60px_rgba(255,255,255,.4)]">
@@ -543,18 +325,6 @@ function Feature({ title, desc }) {
     </div>
   );
 }
-function Chip({ children, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-xs px-2.5 py-1 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 text-slate-200"
-    >
-      {children}
-    </button>
-  );
-}
-
 /* ---------- Floating Glow Background ---------- */
 function BgGlow() {
   return (

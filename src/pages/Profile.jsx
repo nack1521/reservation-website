@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { usersAPI } from "../services/users.js";
 import { authAPI } from "../services/api.googleAuth.js";
 import { reservationsAPI } from "../services/reservations.js";
+import useAuth from "../auth/useAuth.js";
 
 /** Mini helpers */
 const Label = ({ children }) => (
@@ -27,6 +28,7 @@ const Stat = ({ label, value }) => (
 
 export default function Profile() {
   const nav = useNavigate();
+  const { logout: endSession, establishSession } = useAuth();
 
   // read current user
   const initUser = localStorage.getItem("authUser") || "ete";
@@ -76,6 +78,7 @@ export default function Profile() {
 
       if (user && typeof user === "object") {
         const nextRoles = syncAuthUserToLocalStorage(user);
+        establishSession(user);
         setRoles(nextRoles);
         setName(user?.name || name);
         setEmail(user?.email || email);
@@ -102,11 +105,12 @@ export default function Profile() {
     }
   }
 
-  function logout() {
-    localStorage.removeItem("auth");
-    localStorage.removeItem("authUser");
-    localStorage.removeItem("authEmail");
-    nav("/login", { replace: true });
+  async function logout() {
+    try {
+      await endSession();
+    } finally {
+      nav("/login", { replace: true });
+    }
   }
 
   useEffect(() => {
@@ -124,6 +128,7 @@ export default function Profile() {
         const user = payload?.user && typeof payload.user === "object" ? payload.user : payload;
         if (!user || ignore) return;
         const nextRoles = syncAuthUserToLocalStorage(user);
+        establishSession(user);
         if (!ignore) {
           setRoles(nextRoles);
           if (user?.name) setName(user.name);
@@ -139,7 +144,7 @@ export default function Profile() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [establishSession]);
 
   useEffect(() => {
     let ignore = false;
@@ -186,6 +191,7 @@ export default function Profile() {
       const user = response?.user || (await authAPI.me())?.user || null;
       if (user) {
         const nextRoles = syncAuthUserToLocalStorage(user);
+        establishSession(user);
         setRoles(nextRoles);
       }
       setTeacherReqState({
@@ -459,7 +465,6 @@ function syncAuthUserToLocalStorage(user) {
     roles.find((r) => ["super_admin", "admin", "teacher", "pending", "student", "user"].includes(r)) || "";
   const primaryRole = orderedPrimary || explicitRole || inferredRole;
 
-  localStorage.setItem("auth", "true");
   localStorage.setItem("authUser", user?.name || localStorage.getItem("authUser") || "User");
   localStorage.setItem("authEmail", user?.email || localStorage.getItem("authEmail") || "");
   localStorage.setItem("authRole", primaryRole);
@@ -551,6 +556,7 @@ function mapReservationStatus(statusRaw, startDate, endDate, bucket) {
 
   const status = String(statusRaw || "").toLowerCase();
   if (status === "pending") return "pending";
+  if (status === "upcoming" || status === "done") return status;
   if (status === "rejected") return "rejected";
   if (["cancelled", "canceled"].includes(status)) return "canceled";
   if (startDate instanceof Date && !Number.isNaN(startDate.getTime())) {

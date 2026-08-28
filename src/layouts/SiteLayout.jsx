@@ -2,114 +2,23 @@
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { authAPI } from "../services/api.googleAuth.js";
 import { reservationsAPI } from "../services/reservations.js";
 import { usersAPI } from "../services/users.js";
-
-function normalizeRoleToken(value) {
-  const normalized = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
-  if (normalized === "superadmin" || normalized === "super_admin") return "super_admin";
-  if (normalized === "administrator") return "admin";
-  return normalized;
-}
-
-function readRoles() {
-  try {
-    const raw = localStorage.getItem("authRoles");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const items = parsed
-          .map((r) => normalizeRoleToken(r))
-          .filter(Boolean);
-        if (items.length) return items;
-      }
-    }
-  } catch {
-    // ignore malformed authRoles value
-  }
-
-  const single = normalizeRoleToken(localStorage.getItem("authRole") || "");
-  if (single) return [single];
-
-  const email = String(localStorage.getItem("authEmail") || "").toLowerCase().trim();
-  if (email.endsWith("@mail.kmutt.ac.th")) return ["student"];
-  return ["user"];
-}
+import useAuth from "../auth/useAuth.js";
 
 export default function SiteLayout() {
   const nav = useNavigate();
   const loc = useLocation();
-  const roles = readRoles();
+  const { user, logout } = useAuth();
+  const roles = Array.isArray(user?.roles) ? user.roles : [];
   const canAccessAdmin = roles.includes("admin") || roles.includes("super_admin");
   const [hasAdminNotifications, setHasAdminNotifications] = useState(false);
 
-  function clearAuthAndRedirect() {
-    localStorage.removeItem("auth");
-    localStorage.removeItem("authUser");
-    localStorage.removeItem("authAt");
-    localStorage.removeItem("authEmail");
-    localStorage.removeItem("authPicture");
-    localStorage.removeItem("authRole");
-    localStorage.removeItem("authRoles");
-    nav("/login", { replace: true });
-  }
-
-  function isUnauthorizedError(err) {
-    const message = String(err?.message || "");
-    return /401|unauthorized/i.test(message);
-  }
-
-  // ถ้ายังไม่ได้ล็อกอิน และไม่ใช่หน้า /login → ส่งไป /login
   useEffect(() => {
-    const authed = localStorage.getItem("auth") === "true";
-    if (!authed && loc.pathname !== "/login") {
-      nav("/login", { replace: true });
-    }
-
-    if (authed && !canAccessAdmin && loc.pathname.startsWith("/admin")) {
+    if (!canAccessAdmin && loc.pathname.startsWith("/admin")) {
       nav("/dashboard", { replace: true });
     }
   }, [canAccessAdmin, loc.pathname, nav]);
-
-  useEffect(() => {
-    let stopped = false;
-
-    async function checkSession() {
-      if (stopped) return;
-      const authed = localStorage.getItem("auth") === "true";
-      if (!authed) return;
-
-      try {
-        await authAPI.me();
-      } catch (err) {
-        if (isUnauthorizedError(err)) {
-          clearAuthAndRedirect();
-        }
-      }
-    }
-
-    function onAuthExpired() {
-      clearAuthAndRedirect();
-    }
-
-    function onVisible() {
-      if (document.visibilityState === "visible") checkSession();
-    }
-
-    window.addEventListener("auth:expired", onAuthExpired);
-    document.addEventListener("visibilitychange", onVisible);
-
-    checkSession();
-    const id = window.setInterval(checkSession, 60 * 1000);
-
-    return () => {
-      stopped = true;
-      window.clearInterval(id);
-      window.removeEventListener("auth:expired", onAuthExpired);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [nav]);
 
   useEffect(() => {
     let stopped = false;
@@ -185,7 +94,7 @@ export default function SiteLayout() {
           {/* Right: search + profile */}
           <div className="flex items-center gap-2">
             <SearchButton />
-            <UserProfile />
+            <UserProfile user={user} onLogout={logout} />
           </div>
         </div>
       </nav>
@@ -240,7 +149,7 @@ function SearchButton() {
 }
 
 /* Dropdown โปรไฟล์ + Logout + ไปหน้า Profile */
-function UserProfile() {
+function UserProfile({ user, onLogout }) {
   const [open, setOpen] = useState(false);
   const popRef = useRef(null);
   const menuRef = useRef(null);
@@ -249,8 +158,8 @@ function UserProfile() {
   const nav = useNavigate();
   const loc = useLocation();
 
-  const username = localStorage.getItem("authUser") || "USER";
-  const email = localStorage.getItem("authEmail") || "student@kmutt.ac.th";
+  const username = user?.name || "USER";
+  const email = user?.email || "";
 
   useEffect(() => {
     function onDocClick(e) {
@@ -290,14 +199,12 @@ function UserProfile() {
     };
   }, [open]);
 
-  function logout() {
-    localStorage.removeItem("auth");
-    localStorage.removeItem("authUser");
-    localStorage.removeItem("authAt");
-    localStorage.removeItem("authEmail");
-    localStorage.removeItem("authRole");
-    localStorage.removeItem("authRoles");
-    nav("/login", { replace: true });
+  async function logout() {
+    try {
+      await onLogout();
+    } finally {
+      nav("/login", { replace: true });
+    }
   }
 
   function goProfile() {

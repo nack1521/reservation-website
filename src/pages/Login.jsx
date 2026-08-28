@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import FietLogo from "../components/FietLogo.jsx";
 import { authAPI } from "../services/api.googleAuth.js";
 import { getApiBaseUrl, getApiOrigin } from "../services/config.js";
+import useAuth from "../auth/useAuth.js";
+import { clearSessionCache } from "../auth/session-cache.js";
 
 function normalizeRoleToken(value) {
   const normalized = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
@@ -103,6 +105,7 @@ function isAdminApp() {
 
 export default function Login() {
   const nav = useNavigate();
+  const { user: sessionUser, establishSession } = useAuth();
   const location = useLocation();
   const from = location.state?.from?.pathname || "/";
 
@@ -128,30 +131,18 @@ export default function Login() {
     const role = pickPrimaryRole(roles);
 
     if (isAdminApp() && !isAdminRole(role)) {
-      localStorage.removeItem("auth");
-      localStorage.removeItem("authUser");
-      localStorage.removeItem("authEmail");
-      localStorage.removeItem("authRole");
-      localStorage.removeItem("authRoles");
-      localStorage.removeItem("authPicture");
+      clearSessionCache();
       setStatus("error");
       setError("Admin portal (5715) allows admin/super_admin login only.");
       return false;
     }
 
-    localStorage.setItem("auth", "true");
-    localStorage.setItem("authUser", user.name || "User");
-    localStorage.setItem("authEmail", user.email || "");
-    localStorage.setItem("authRole", role);
-    localStorage.setItem("authRoles", JSON.stringify(roles));
-    if (user.picture) {
-      localStorage.setItem("authPicture", user.picture);
-    }
+    establishSession({ ...user, roles });
 
     setStatus("success");
     setTimeout(() => nav(from, { replace: true }), 900);
     return true;
-  }, [from, nav]);
+  }, [establishSession, from, nav]);
 
   const fetchUserInfo = useCallback(async () => {
     try {
@@ -173,12 +164,7 @@ export default function Login() {
 
       applyUserToSession(meUser, callbackRolesRef.current);
     } catch (err) {
-      localStorage.removeItem("auth");
-      localStorage.removeItem("authUser");
-      localStorage.removeItem("authEmail");
-      localStorage.removeItem("authRole");
-      localStorage.removeItem("authRoles");
-      localStorage.removeItem("authPicture");
+      clearSessionCache();
       setStatus("error");
       setError(`Login succeeded but failed to establish frontend session (${err?.message || "unknown error"})`);
       throw new Error("SESSION_NOT_READY");
@@ -225,7 +211,7 @@ export default function Login() {
     const top = window.screenY + (window.outerHeight - height) / 2;
     
     const popup = window.open(
-      `${apiBaseUrl}/auth/google`,
+      `${apiBaseUrl}/auth/google?returnOrigin=${encodeURIComponent(window.location.origin)}`,
       "Google Login",
       `width=${width},height=${height},left=${left},top=${top}`
     );
@@ -283,6 +269,13 @@ export default function Login() {
       window.removeEventListener("message", handleOAuthCallback);
     };
   }, [handleOAuthCallback]);
+
+  useEffect(() => {
+    if (!sessionUser) return;
+    const roles = extractRoles(sessionUser);
+    if (isAdminApp() && !roles.some(isAdminRole)) return;
+    nav(from, { replace: true });
+  }, [from, nav, sessionUser]);
 
   useEffect(() => {
     const id = "login-local-animations";

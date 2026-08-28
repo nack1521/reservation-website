@@ -2,16 +2,6 @@ import { getApiBaseUrl } from "./config.js";
 
 const API_BASE = getApiBaseUrl();
 
-function readAccessToken() {
-  return (
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("authToken") ||
-    localStorage.getItem("token") ||
-    localStorage.getItem("jwt") ||
-    ""
-  );
-}
-
 async function parseSuccessBody(response) {
   if (response.status === 204) return {};
 
@@ -38,7 +28,7 @@ async function apiFetch(endpoint, options = {}) {
 
   const {
     auth = false,
-    withCredentials = false,
+    withCredentials = true,
     includeResponseMeta = false,
     headers: incomingHeaders = {},
     ...rest
@@ -48,13 +38,6 @@ async function apiFetch(endpoint, options = {}) {
     ...incomingHeaders,
   };
 
-  if (auth && !headers.Authorization) {
-    const token = readAccessToken();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-  }
-
   const hasBody = rest.body !== undefined && rest.body !== null;
   const isFormData = typeof FormData !== "undefined" && rest.body instanceof FormData;
   if (hasBody && !isFormData && !headers["Content-Type"]) {
@@ -62,7 +45,7 @@ async function apiFetch(endpoint, options = {}) {
   }
 
   const config = {
-    credentials: withCredentials ? "include" : "omit",
+    credentials: auth || withCredentials ? "include" : "omit",
     headers,
     ...rest,
   };

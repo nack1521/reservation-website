@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { reservationsAPI } from "../services/reservations.js";
 
 export default function ReservationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const [booking, setBooking] = useState(location.state?.booking || null);
-  const [loading, setLoading] = useState(!location.state?.booking);
+  const [booking, setBooking] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [canceling, setCanceling] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -19,22 +19,8 @@ export default function ReservationDetail() {
     setError("");
 
     try {
-      const payload = await reservationsAPI.meDashboard();
-      const rows = [
-        ...(Array.isArray(payload.upcoming) ? payload.upcoming : []),
-        ...(Array.isArray(payload.pending) ? payload.pending : []),
-        ...(Array.isArray(payload.history) ? payload.history : []),
-      ];
-      const found = rows
-        .map((row) => normalizeReservation(row))
-        .find((row) => row.id === id);
-
-      if (!found) {
-        setError("ไม่พบรายการจองนี้ หรือรายการถูกยกเลิกไปแล้ว");
-        setBooking(null);
-      } else {
-        setBooking(found);
-      }
+      const payload = await reservationsAPI.detail(id);
+      setBooking(normalizeReservation(payload));
     } catch (err) {
       setError(err?.message || "ไม่สามารถโหลดรายละเอียดการจองได้");
       setBooking(null);
@@ -44,20 +30,24 @@ export default function ReservationDetail() {
   }, [id]);
 
   useEffect(() => {
-    if (!booking) {
-      loadReservation();
-      return;
-    }
+    loadReservation();
+  }, [loadReservation]);
 
-    if (booking.id !== id) {
-      loadReservation();
-    }
-  }, [booking, id, loadReservation]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const canCancel = useMemo(() => {
     if (!booking) return false;
     return ["upcoming", "pending"].includes(booking.status) && !!booking.id;
   }, [booking]);
+
+  const canCheckIn = useMemo(() => {
+    if (!booking || booking.status !== "upcoming" || booking.checkInAt) return false;
+    const start = new Date(booking.startISO).getTime();
+    return Number.isFinite(start) && now >= start && now <= start + 15 * 60 * 1000;
+  }, [booking, now]);
 
   async function handleCancel() {
     if (!canCancel || !booking) return;
@@ -77,6 +67,22 @@ export default function ReservationDetail() {
       setError(err?.message || "ไม่สามารถยกเลิกการจองได้");
     } finally {
       setCanceling(false);
+    }
+  }
+
+  async function handleCheckIn() {
+    if (!canCheckIn || !booking) return;
+    setCheckingIn(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await reservationsAPI.checkIn(booking.id);
+      setSuccess(response?.message || "Checked in successfully");
+      await loadReservation();
+    } catch (err) {
+      setError(err?.message || "ไม่สามารถเช็กอินได้");
+    } finally {
+      setCheckingIn(false);
     }
   }
 
@@ -142,7 +148,17 @@ export default function ReservationDetail() {
             <Info label="หมายเหตุ" value={booking.note || "-"} />
           </div>
 
-          <div className="pt-2 border-t border-white/10 flex justify-end">
+          <div className="pt-2 border-t border-white/10 flex flex-wrap justify-end gap-2">
+            {canCheckIn && (
+              <button
+                type="button"
+                onClick={handleCheckIn}
+                disabled={checkingIn}
+                className="rounded-xl px-4 py-2.5 text-sm border border-emerald-300/30 text-emerald-100 bg-emerald-400/10 hover:bg-emerald-400/15 disabled:opacity-60"
+              >
+                {checkingIn ? "กำลังเช็กอิน..." : "เช็กอิน"}
+              </button>
+            )}
             {canCancel ? (
               <button
                 type="button"
@@ -187,6 +203,9 @@ function normalizeReservation(raw = {}) {
     capacity: Number(raw.room?.capacity ?? raw.capacity ?? 0) || 0,
     note: String(raw.note ?? ""),
     status,
+    startISO,
+    endISO,
+    checkInAt: raw.checkInAt || null,
   };
 }
 
@@ -205,6 +224,7 @@ function pickReservationId(raw = {}) {
 function mapStatus(statusRaw, startDate, endDate) {
   const status = String(statusRaw || "").toLowerCase();
   if (status === "pending") return "pending";
+  if (status === "upcoming" || status === "done") return status;
   if (status === "rejected") return "rejected";
   if (["cancelled", "canceled"].includes(status)) return "canceled";
 

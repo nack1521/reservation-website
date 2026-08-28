@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Real environment files stay local. Commit only safe examples.
+.env
+.env.*
+!.env.example
+!.env.user.example
+!.env.admin.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

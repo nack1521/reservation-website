@@ -177,7 +177,7 @@ export default function Booking() {
     if (roomsFromApi.length) {
       return roomsFromApi.filter((room) => !room.floor || room.floor === String(floor));
     }
-    return roomsOfFloor(floor);
+    return import.meta.env.VITE_ENABLE_MOCK_ROOMS === "true" ? roomsOfFloor(floor) : [];
   }, [floor, roomsFromApi]);
   const roomsFiltered = useMemo(() => {
     let list = roomsRaw;
@@ -259,7 +259,7 @@ export default function Booking() {
     return () => {
       ignore = true;
     };
-  }, [selected?.id, date]);
+  }, [selected, date]);
 
   useEffect(() => {
     let ignore = false;
@@ -271,15 +271,13 @@ export default function Booking() {
       }
 
       try {
-        const rows = await reservationsAPI.list({ date, status: "approved" });
-        const currentEmail = (localStorage.getItem("authEmail") || "").toLowerCase();
-        const ownRows = rows.filter((row) => {
-          const rowEmail = String(row?.user?.email || "").toLowerCase();
-          if (!currentEmail || !rowEmail) return true;
-          return rowEmail === currentEmail;
-        });
-
-        const total = ownRows.reduce((sum, row) => {
+        const rows = await reservationsAPI.me({ date, status: "all" });
+        const approvedRows = rows.filter(
+          (row) =>
+            row?.approvalState === "approved" &&
+            ["upcoming", "done"].includes(String(row?.status || ""))
+        );
+        const total = approvedRows.reduce((sum, row) => {
           const start = new Date(row.start || row.startTime || 0).getTime();
           const end = new Date(row.end || row.endTime || 0).getTime();
           if (!start || !end || end <= start) return sum;
@@ -1545,7 +1543,7 @@ function minuteToLabel(totalMinute) {
 }
 
 function getPointISO(dateISO, idx) {
-  return new Date(`${dateISO}T${TIME_POINTS[idx].value}:00`).toISOString();
+  return new Date(`${dateISO}T${TIME_POINTS[idx].value}:00+07:00`).toISOString();
 }
 
 function hasOverlap(startA, endA, startB, endB) {
@@ -1596,8 +1594,14 @@ function formatDate(iso) {
 }
 
 function getTodayISO() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function getMinSelectableStartIndex(dateISO, todayISO) {
@@ -1605,8 +1609,8 @@ function getMinSelectableStartIndex(dateISO, todayISO) {
 
   const threshold = Date.now() + 60 * 60 * 1000;
   for (let i = 0; i < TIME_POINTS.length - 1; i++) {
-    const pointAt = new Date(`${dateISO}T${TIME_POINTS[i].value}:00`).getTime();
-    if (pointAt >= threshold) return i;
+    const pointAt = getPointISO(dateISO, i);
+    if (new Date(pointAt).getTime() >= threshold) return i;
   }
 
   return TIME_POINTS.length;

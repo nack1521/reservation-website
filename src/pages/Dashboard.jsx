@@ -261,6 +261,7 @@ function mapStatus(statusRaw, startDate, endDate, bucket) {
 
   const status = String(statusRaw || "").toLowerCase();
   if (status === "pending") return "pending";
+  if (status === "upcoming" || status === "done") return status;
   if (status === "rejected") return "rejected";
   if (["cancelled", "canceled"].includes(status)) return "canceled";
 
@@ -332,4 +333,3 @@ function thaiDate(iso) {
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("th-TH", { day:"2-digit", month:"short", year:"numeric" });
 }
-

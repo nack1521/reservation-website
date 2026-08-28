@@ -39,12 +39,12 @@ export default function AdminDashboard() {
   async function loadAdminInsights() {
     try {
       const [allReservations, roomPaged, teacherRequests] = await Promise.all([
-        reservationsAPI.list(),
+        reservationsAPI.adminAll({ page: 1, limit: 200 }),
         roomAPI.list({ page: 1, limit: 200 }),
         usersAPI.teacherRequests(),
       ]);
 
-      const reservations = Array.isArray(allReservations) ? allReservations : [];
+      const reservations = Array.isArray(allReservations?.items) ? allReservations.items : [];
       const rooms = Array.isArray(roomPaged?.items) ? roomPaged.items : [];
       const roleRequests = Array.isArray(teacherRequests) ? teacherRequests : [];
 

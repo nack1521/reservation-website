@@ -1,167 +1,58 @@
-# Frontend API Sheet (Role Workflow + Migration Behavior)
+# Frontend API Sheet
 
-## Auth and Role Rules
-- Role list includes `student`.
-- Server assigns default role from email domain:
-- `@mail.kmutt.ac.th` -> `student`
-- Other domains -> `user`
-- Frontend must not send `roles` in register payload.
+The frontend uses Google OAuth and an HTTP-only JWT cookie. Password registration and `/users/register` are intentionally unsupported.
 
-## Register Request (Updated)
-Endpoint:
-- `POST /users/register`
+All authenticated calls use `credentials: "include"`.
 
-Request body:
-- `email: string`
-- `password: string`
-- `name: string`
+## Authentication
 
-Example:
-```json
-{
-  "email": "john@mail.kmutt.ac.th",
-  "password": "secret123",
-  "name": "John"
-}
-```
+| Method | Route | Purpose |
+|---|---|---|
+| GET | `/auth/google?returnOrigin=...` | Begin KMUTT Google login |
+| GET | `/auth/google/callback` | OAuth callback and cookie creation |
+| GET | `/auth/me` | Confirm session and load safe user |
+| GET | `/auth/profile` | Alias of current safe profile |
+| POST | `/auth/logout` | Clear the JWT cookie |
 
-Notes:
-- `roles` is removed from register payload.
-- Response user role is server-assigned (`student` or `user`).
+## Users and teacher roles
 
-## Teacher Request APIs
+| Method | Route | Access |
+|---|---|---|
+| GET | `/users/me` | Current user |
+| PATCH | `/users/me` | Current user's phone number |
+| POST | `/users/me/request-teacher` | Current user |
+| GET | `/users/teacher-requests` | Admin |
+| PATCH | `/users/:id/approve-teacher` | Admin |
+| PATCH | `/users/:id/reject-teacher` | Admin |
+| PATCH | `/users/:id/grant-admin` | Super admin |
 
-### Create teacher request
-- Method: `POST`
-- Path: `/users/me/request-teacher`
-- Auth: Required (JWT)
-- Body: none
+## Rooms
 
-Success example:
-```json
-{
-  "message": "Teacher role request submitted",
-  "user": {
-    "_id": "USER_ID",
-    "email": "user@example.com",
-    "roles": ["user", "pending"]
-  }
-}
-```
+| Method | Route | Access |
+|---|---|---|
+| GET | `/room/all` | Public list of active rooms |
+| GET | `/room/:id` | Room detail |
+| POST | `/room/create` | Admin |
+| PATCH | `/room/:id` | Admin |
+| DELETE | `/room/:id` | Admin soft delete |
+| GET | `/room/addons` | Add-on list |
+| POST | `/room/addons/seed` | Admin |
 
-Behavior:
-- Adds `pending` role.
-- If already `teacher`/`admin`/`super_admin`, returns error.
-- If already pending, returns existing user.
+## Reservations
 
-### List pending teacher requests (admin)
-- Method: `GET`
-- Path: `/users/teacher-requests`
-- Auth: Required (JWT)
-- Role: `admin` or `super_admin`
-- Body: none
+| Method | Route | Purpose |
+|---|---|---|
+| POST | `/reservations` | Create reservation |
+| GET | `/reservations/me` | Current user's reservations |
+| GET | `/reservations/me/dashboard` | Grouped dashboard and summary |
+| GET | `/reservations/:id` | Owner/admin detail |
+| PATCH | `/reservations/:id` | Owner edit or admin edit |
+| PATCH | `/reservations/:id/cancel` | Cancel pending/upcoming |
+| PATCH | `/reservations/:id/check-in` | Check in during valid window |
+| GET | `/reservations/availability` | Room/day hourly availability |
+| GET | `/reservations/pending` | Admin pending queue |
+| GET | `/reservations/all` | Admin paginated list |
+| PATCH | `/reservations/:id/approve` | Admin approval |
+| PATCH | `/reservations/:id/reject` | Admin rejection |
 
-Success example:
-```json
-[
-  {
-    "_id": "USER_ID",
-    "email": "user@example.com",
-    "name": "User Name",
-    "roles": ["user", "pending"],
-    "picture": "https://...",
-    "createdAt": "2026-04-06T10:00:00.000Z"
-  }
-]
-```
-
-### Approve teacher request
-- Method: `PATCH`
-- Path: `/users/:id/approve-teacher`
-- Auth: Required (JWT)
-- Role: `admin` or `super_admin`
-- Body: none
-
-Success example:
-```json
-{
-  "message": "Teacher role approved",
-  "user": {
-    "_id": "USER_ID",
-    "roles": ["user", "teacher"]
-  }
-}
-```
-
-### Reject teacher request
-- Method: `PATCH`
-- Path: `/users/:id/reject-teacher`
-- Auth: Required (JWT)
-- Role: `admin` or `super_admin`
-- Body: none
-
-Success example:
-```json
-{
-  "message": "Teacher role request rejected",
-  "user": {
-    "_id": "USER_ID",
-    "roles": ["user"]
-  }
-}
-```
-
-## Super Admin API
-
-### Grant admin role
-- Method: `PATCH`
-- Path: `/users/:id/grant-admin`
-- Auth: Required (JWT)
-- Role: `super_admin`
-- Body: none
-
-Success example:
-```json
-{
-  "message": "Admin role granted",
-  "user": {
-    "_id": "USER_ID",
-    "roles": ["user", "admin"]
-  }
-}
-```
-
-## OAuth and Login Behavior
-- Google login follows same default-role assignment rules.
-- Legacy KMUTT users with only `user` role are normalized to `student` at login.
-
-## Reservation Impact
-No reservation API changes in this role update.
-
-Existing behavior remains:
-- Non-teacher users above 2 hours/day -> reservation becomes `pending` for admin approval.
-- `teacher` / `admin` / `super_admin` bypass 2-hour cap.
-
-## Common Error Cases To Handle
-- `401 Unauthorized`: missing/invalid JWT.
-- `403 Forbidden`: role not allowed for endpoint.
-- `400 Bad Request`:
-- requesting teacher when user already has elevated role
-- invalid user id
-- user not found during approve/reject/grant-admin
-
-## Frontend Service Mapping
-Implemented in [src/services/users.js](../src/services/users.js):
-- `usersAPI.register`
-- `usersAPI.requestTeacherRole`
-- `usersAPI.teacherRequests`
-- `usersAPI.approveTeacher`
-- `usersAPI.rejectTeacher`
-- `usersAPI.grantAdmin`
-
-## Source References
-- `user.controller.ts`
-- `user.service.ts`
-- `register.dto.ts`
-- `auth.service.ts`
-- `roles.enum.ts`
+Reservation statuses are `pending`, `upcoming`, `done`, `rejected`, and `canceled`. `approved` is represented by `status=upcoming` plus `approvalState=approved`; it is not a status value.

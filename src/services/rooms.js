@@ -58,7 +58,6 @@ function toCreatePayload(room = {}) {
     type: room.type || "",
     capacity: toNumber(room.capacity, 0),
     location: room.location || "",
-    addOnsByType: Array.isArray(room.addOnsByType) ? room.addOnsByType : [],
   };
 }
 

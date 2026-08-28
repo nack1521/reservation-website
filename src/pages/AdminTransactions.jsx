@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { reservationsAPI } from "../services/reservations.js";
@@ -123,7 +123,7 @@ export default function AdminTransactions() {
     end: "",
   });
 
-  async function loadTransactions() {
+  const loadTransactions = useCallback(async () => {
     setLoading(true);
     setError("");
 
@@ -167,9 +167,9 @@ export default function AdminTransactions() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [dateFilter, page, pageSize, roomFilter, statusFilter, userFilter]);
 
-  async function loadRooms() {
+  const loadRooms = useCallback(async () => {
     try {
       const result = await roomAPI.list({ page: 1, limit: 200, sortBy: "name", sortOrder: "asc" });
       const items = Array.isArray(result?.items) ? result.items : [];
@@ -177,7 +177,7 @@ export default function AdminTransactions() {
     } catch {
       setRooms([]);
     }
-  }
+  }, []);
 
   const floorOptions = useMemo(() => {
     const set = new Set(
@@ -216,24 +216,24 @@ export default function AdminTransactions() {
 
   useEffect(() => {
     loadRooms();
-  }, []);
+  }, [loadRooms]);
 
   useEffect(() => {
     const routePage = Math.max(1, Number(params.page) || 1);
     if (routePage !== page) {
       setPage(routePage);
     }
-  }, [params.page]);
+  }, [page, params.page]);
 
   useEffect(() => {
     loadTransactions();
-  }, [page, pageSize, statusFilter, dateFilter, roomFilter, userFilter]);
+  }, [loadTransactions]);
 
   useEffect(() => {
     if (page !== 1) {
       navigate(`/admin-transactions/1`, { replace: true });
     }
-  }, [statusFilter, dateFilter, floorFilter, roomFilter, userFilter, pageSize]);
+  }, [statusFilter, dateFilter, floorFilter, roomFilter, userFilter, pageSize, navigate, page]);
 
   useEffect(() => {
     setRoomFilter("");
