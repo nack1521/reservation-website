@@ -662,26 +662,22 @@ export default function Booking() {
             <Section title="ขั้นที่ 1 · เลือกชั้น + ห้อง">
               {/* เลือกชั้น */}
               <Card>
-                <Label>เลือกชั้น (สาขา)</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                <Label>เลือกชั้น (Floor 2 - 9)</Label>
+                <select
+                  value={floor}
+                  onChange={(e) => {
+                    setFloor(e.target.value);
+                    setSelected(null);
+                  }}
+                  className="w-full rounded-xl bg-zinc-900/90 border border-white/15 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                >
+                  <option value="">-- กรุณาเลือกชั้น (ชั้น 2 - 9) --</option>
                   {FLOORS.map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => {
-                        setFloor(String(f));
-                        setSelected(null);
-                      }}
-                      className={`rounded-2xl px-3 py-3 text-left border transition ${
-                        floor === String(f)
-                          ? "border-emerald-400/40 bg-emerald-400/10"
-                          : "border-white/10 bg-zinc-900/80 hover:bg-zinc-800/80"
-                      }`}
-                    >
-                      <div className="text-xs text-slate-300/80">ชั้น {f}</div>
-                      <div className="font-medium text-white">{FLOOR_LABEL[f]}</div>
-                    </button>
+                    <option key={f} value={f}>
+                      ชั้น {f} — {FLOOR_LABEL[f]}
+                    </option>
                   ))}
-                </div>
+                </select>
               </Card>
 
               {/* Filter + Rooms */}
@@ -813,28 +809,27 @@ export default function Booking() {
 
           {/* STEP 2 */}
           {step === 2 && isTimeFirst && (
-            <Section title="ขั้นที่ 2 · เลือกชั้น (สาขา)">
+            <Section title="ขั้นที่ 2 · เลือกชั้น (Floor 2 - 9)">
               <Card>
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                <Label>เลือกชั้น (Floor 2 - 9)</Label>
+                <select
+                  value={floor}
+                  disabled={!canPickFloor}
+                  onChange={(e) => {
+                    setFloor(e.target.value);
+                    setSelected(null);
+                  }}
+                  className={`w-full rounded-xl bg-zinc-900/90 border border-white/15 px-4 py-3 text-sm text-white focus:border-emerald-400 focus:outline-none ${
+                    !canPickFloor ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  <option value="">-- กรุณาเลือกชั้น (ชั้น 2 - 9) --</option>
                   {FLOORS.map((f) => (
-                    <button
-                      key={f}
-                      disabled={!canPickFloor}
-                      onClick={() => {
-                        setFloor(String(f));
-                        setSelected(null);
-                      }}
-                      className={`rounded-2xl px-3 py-3 text-left border transition ${
-                        floor === String(f)
-                          ? "border-emerald-400/40 bg-emerald-400/10"
-                          : "border-white/10 bg-zinc-900/80 hover:bg-zinc-800/80"
-                      } ${!canPickFloor ? "opacity-50 cursor-not-allowed" : ""}`}
-                    >
-                      <div className="text-xs text-slate-300/80">ชั้น {f}</div>
-                      <div className="font-medium text-white">{FLOOR_LABEL[f]}</div>
-                    </button>
+                    <option key={f} value={f}>
+                      ชั้น {f} — {FLOOR_LABEL[f]}
+                    </option>
                   ))}
-                </div>
+                </select>
               </Card>
               <StepActions>
                 <BackButton onClick={backStep} />

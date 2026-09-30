@@ -226,10 +226,14 @@ export const reservationsAPI = {
       body: JSON.stringify({ note }),
     }),
 
-  reject: (id, note = "rejected") =>
+  reject: (id, reason = "rejected") =>
     apiFetch(`${RES_BASE}/${id}/reject`, {
       method: "PATCH",
       withCredentials: true,
-      body: JSON.stringify({ note }),
+      body: JSON.stringify(
+        typeof reason === "object" && reason !== null
+          ? reason
+          : { reason: String(reason || "rejected") },
+      ),
     }),
 };

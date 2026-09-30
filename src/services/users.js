@@ -91,6 +91,14 @@ export const usersAPI = {
       auth: true,
     }),
 
+  bulkApproveTeachers: (userIds) =>
+    fetchUsersWithFallback(`/bulk-approve-teachers`, {
+      method: "POST",
+      withCredentials: true,
+      auth: true,
+      body: JSON.stringify({ userIds }),
+    }),
+
   rejectTeacher: (id) =>
     fetchUsersWithFallback(buildUserActionPath(id, "/reject-teacher"), {
       method: "PATCH",

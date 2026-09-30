@@ -65,6 +65,10 @@ export default function AdminDashboard() {
     }
   }
 
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+
   async function handleApprove(id) {
     setAdminError("");
     setAdminMessage("");
@@ -78,17 +82,38 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleReject(id) {
-    const note = window.prompt("Optional reject note", "rejected") || "rejected";
+  function openRejectModal(item) {
+    setRejectTarget(item);
+    setRejectReason("");
+    setAdminError("");
+  }
+
+  function closeRejectModal() {
+    setRejectTarget(null);
+    setRejectReason("");
+  }
+
+  async function handleConfirmReject() {
+    if (!rejectTarget) return;
+    if (!rejectReason.trim()) {
+      setAdminError("Please provide a rejection reason.");
+      return;
+    }
+
+    setRejecting(true);
     setAdminError("");
     setAdminMessage("");
+    const targetId = rejectTarget.id || rejectTarget._id;
     try {
-      await reservationsAPI.reject(id, note);
+      await reservationsAPI.reject(targetId, rejectReason.trim());
       setAdminMessage("Reservation rejected.");
+      closeRejectModal();
       await loadPending();
       await loadAdminInsights();
     } catch (err) {
       setAdminError(err?.message || "Cannot reject reservation.");
+    } finally {
+      setRejecting(false);
     }
   }
 
@@ -243,7 +268,7 @@ export default function AdminDashboard() {
                               Approve
                             </button>
                             <button
-                              onClick={() => handleReject(item.id || item._id)}
+                              onClick={() => openRejectModal(item)}
                               className="rounded-lg border border-rose-300/30 bg-rose-400/10 px-2.5 py-1 text-rose-200 hover:bg-rose-400/20"
                             >
                               Reject
@@ -258,6 +283,78 @@ export default function AdminDashboard() {
             )}
           </div>
         </section>
+
+        {rejectTarget && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeRejectModal();
+            }}
+          >
+            <div
+              className="w-full max-w-lg rounded-2xl border border-white/10 bg-zinc-950/95 p-6 shadow-2xl space-y-4 text-slate-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-rose-300">
+                  Reject Reservation Request
+                </h3>
+                <button
+                  onClick={closeRejectModal}
+                  className="rounded-lg border border-white/10 p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-zinc-900/60 p-3 text-xs space-y-1 text-slate-300">
+                <p>
+                  <span className="text-slate-400">Requester:</span>{" "}
+                  {rejectTarget.user?.name || rejectTarget.user?.email || "-"}
+                </p>
+                <p>
+                  <span className="text-slate-400">Room:</span>{" "}
+                  {rejectTarget.room?.name || rejectTarget.roomName || "-"}
+                </p>
+                <p>
+                  <span className="text-slate-400">Schedule:</span>{" "}
+                  {formatDateTimeRange(rejectTarget.start, rejectTarget.end)}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-1.5">
+                  Reason for Rejection <span className="text-rose-400">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Please specify why this reservation is rejected (e.g. Room reserved for faculty meeting)..."
+                  className="w-full rounded-xl border border-white/15 bg-zinc-900/80 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-rose-400/80 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={closeRejectModal}
+                  className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/15 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={rejecting || !rejectReason.trim()}
+                  onClick={handleConfirmReject}
+                  className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+                >
+                  {rejecting ? "Rejecting..." : "Confirm Rejection"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

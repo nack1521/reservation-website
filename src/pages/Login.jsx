@@ -243,7 +243,17 @@ export default function Login() {
     }
 
     const payload = event.data && typeof event.data === "object" ? event.data : {};
-    const { success, error: errorMsg } = payload;
+    const { success, token, error: errorMsg } = payload;
+
+    if (token) {
+      localStorage.setItem("jwt_token", token);
+      window.jwtToken = token;
+      console.log(
+        "%c🔑 [OAuth Callback JWT Token]:",
+        "color:#06b6d4;font-weight:bold;font-size:12px;background:#082f49;padding:2px 6px;border-radius:4px;",
+        token
+      );
+    }
 
     if (success) {
       if (oauthHandledRef.current) return;
@@ -269,6 +279,21 @@ export default function Login() {
       window.removeEventListener("message", handleOAuthCallback);
     };
   }, [handleOAuthCallback]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    if (token) {
+      localStorage.setItem("jwt_token", token);
+      window.jwtToken = token;
+      console.log(
+        "%c🔑 [URL Param JWT Token]:",
+        "color:#06b6d4;font-weight:bold;font-size:12px;background:#082f49;padding:2px 6px;border-radius:4px;",
+        token
+      );
+      runSessionBootstrap();
+    }
+  }, [runSessionBootstrap]);
 
   useEffect(() => {
     if (!sessionUser) return;

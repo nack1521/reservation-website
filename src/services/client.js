@@ -38,6 +38,13 @@ async function apiFetch(endpoint, options = {}) {
     ...incomingHeaders,
   };
 
+  if (!headers["Authorization"] && typeof window !== "undefined") {
+    const savedToken = localStorage.getItem("jwt_token");
+    if (savedToken) {
+      headers["Authorization"] = `Bearer ${savedToken}`;
+    }
+  }
+
   const hasBody = rest.body !== undefined && rest.body !== null;
   const isFormData = typeof FormData !== "undefined" && rest.body instanceof FormData;
   if (hasBody && !isFormData && !headers["Content-Type"]) {

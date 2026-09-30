@@ -47,6 +47,7 @@ function normalizeTransaction(item = {}) {
     note: String(item.note || ""),
     start: startRaw,
     end: endRaw,
+    createdAt: item.createdAt || item.created_at || "",
   };
 }
 
@@ -95,6 +96,7 @@ export default function AdminTransactions() {
   const [message, setMessage] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
+  const [createdDateFilter, setCreatedDateFilter] = useState("");
   const [floorFilter, setFloorFilter] = useState("all");
   const [roomFilter, setRoomFilter] = useState("");
   const [userFilter, setUserFilter] = useState("");
@@ -135,6 +137,7 @@ export default function AdminTransactions() {
         room: roomFilter || undefined,
         user: userFilter || undefined,
         date: dateFilter || undefined,
+        createdDate: createdDateFilter || undefined,
       });
 
       const sourceItems = Array.isArray(paged?.items) ? paged.items : [];
@@ -167,7 +170,7 @@ export default function AdminTransactions() {
     } finally {
       setLoading(false);
     }
-  }, [dateFilter, page, pageSize, roomFilter, statusFilter, userFilter]);
+  }, [createdDateFilter, dateFilter, page, pageSize, roomFilter, statusFilter, userFilter]);
 
   const loadRooms = useCallback(async () => {
     try {
@@ -540,24 +543,41 @@ export default function AdminTransactions() {
                 ))}
               </select>
 
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
-              />
-              <button
-                onClick={() => {
-                  setStatusFilter("all");
-                  setDateFilter("");
-                  setFloorFilter("all");
-                  setRoomFilter("");
-                  setUserFilter("");
-                }}
-                className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm hover:bg-white/15"
-              >
-                Clear Filters
-              </button>
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] text-slate-400">Reservation Date</span>
+                <input
+                  type="date"
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <span className="text-[11px] text-slate-400">Created Date</span>
+                <input
+                  type="date"
+                  value={createdDateFilter}
+                  onChange={(e) => setCreatedDateFilter(e.target.value)}
+                  className="rounded-xl bg-zinc-900/70 border border-white/10 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    setStatusFilter("all");
+                    setDateFilter("");
+                    setCreatedDateFilter("");
+                    setFloorFilter("all");
+                    setRoomFilter("");
+                    setUserFilter("");
+                  }}
+                  className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm hover:bg-white/15 transition"
+                >
+                  Clear Filters
+                </button>
+              </div>
             </div>
           </div>
 
@@ -574,6 +594,7 @@ export default function AdminTransactions() {
               <table className="min-w-full text-sm">
                 <thead className="text-slate-300/80">
                   <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
+                    <th>Created At</th>
                     <th>User</th>
                     <th>Room</th>
                     <th>Start</th>
@@ -585,6 +606,9 @@ export default function AdminTransactions() {
                 <tbody className="divide-y divide-white/10">
                   {rows.map((item) => (
                     <tr key={item.id} className="[&>td]:py-2.5 [&>td]:px-3 align-top">
+                      <td className="text-slate-300 whitespace-nowrap">
+                        {item.createdAt ? formatDateTime(item.createdAt) : "-"}
+                      </td>
                       <td>{item.user}</td>
                       <td>{item.room}</td>
                       <td>{item.start ? formatDateTime(item.start) : "-"}</td>

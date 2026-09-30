@@ -12,22 +12,40 @@ export default function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const establishSession = useCallback((nextUser) => {
+  const establishSession = useCallback((nextUser, tokenOverride) => {
     const normalized = unwrapUser(nextUser);
     if (!normalized?.email) return null;
     setUser(normalized);
     writeSafeSessionCache(normalized);
+
+    const token = tokenOverride || nextUser?.token || (typeof window !== "undefined" ? localStorage.getItem("jwt_token") : null);
+    if (token) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jwt_token", token);
+        window.jwtToken = token;
+      }
+      console.log(
+        "%c🔑 [Safari/Web JWT Token]:",
+        "color:#06b6d4;font-weight:bold;font-size:12px;background:#082f49;padding:2px 6px;border-radius:4px;",
+        token
+      );
+    }
+
     return normalized;
   }, []);
 
   const clearSession = useCallback(() => {
     setUser(null);
     clearSessionCache();
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("jwt_token");
+      window.jwtToken = null;
+    }
   }, []);
 
   const refresh = useCallback(async () => {
     const payload = await authAPI.me();
-    const nextUser = establishSession(payload);
+    const nextUser = establishSession(payload, payload?.token);
     if (!nextUser) throw new Error("Invalid session response");
     return nextUser;
   }, [establishSession]);
