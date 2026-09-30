@@ -10,12 +10,53 @@ export default function SiteLayout() {
   const { user, logout } = useAuth();
   const roles = Array.isArray(user?.roles) ? user.roles : [];
   const canAccessAdmin = roles.includes("admin") || roles.includes("super_admin");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuPanelRef = useRef(null);
+  const menuButtonRef = useRef(null);
 
   useEffect(() => {
     if (!canAccessAdmin && loc.pathname.startsWith("/admin")) {
       nav("/dashboard", { replace: true });
     }
   }, [canAccessAdmin, loc.pathname, nav]);
+
+  // Close the mobile menu whenever the route changes.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [loc.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    function onDocPointerDown(e) {
+      const inPanel = menuPanelRef.current && menuPanelRef.current.contains(e.target);
+      const inButton = menuButtonRef.current && menuButtonRef.current.contains(e.target);
+      if (!inPanel && !inButton) setMenuOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", onDocPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  // Prevent the page behind the menu panel from scrolling on touch devices.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [menuOpen]);
 
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -30,11 +71,11 @@ export default function SiteLayout() {
     <div className="min-h-screen flex flex-col bg-animated bg-glow text-white overflow-x-hidden">
       {/* NAVBAR */}
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-black/30 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-2">
           {/* Brand Logo Clickable to Home */}
           <NavLink
             to="/"
-            className="text-lg font-semibold tracking-tight hover:opacity-90 transition flex items-center"
+            className="text-base sm:text-lg font-semibold tracking-tight hover:opacity-90 transition flex items-center min-w-0"
           >
             FIET
             <span className="ml-1 bg-gradient-to-r from-cyan-400 via-emerald-400 to-violet-400 bg-clip-text text-transparent">
@@ -42,7 +83,7 @@ export default function SiteLayout() {
             </span>
           </NavLink>
 
-          {/* Menu */}
+          {/* Menu (desktop) */}
           <div className="hidden md:flex items-center gap-1">
             <NavItem to="/">Home</NavItem>
             <NavItem to="/book">Rooms</NavItem>
@@ -51,16 +92,73 @@ export default function SiteLayout() {
             <NavItem to="/user-guide">User Guide</NavItem>
           </div>
 
-          {/* Right: notification bell + profile */}
-          <div className="flex items-center gap-3">
+          {/* Right: menu toggle (mobile) + notification bell + profile */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-nav"
+              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              className="md:hidden w-10 h-10 grid place-items-center rounded-xl border border-white/10 bg-white/[0.06] hover:bg-white/15 transition text-slate-300 hover:text-white"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={menuOpen ? "hidden" : ""}
+                aria-hidden="true"
+              >
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={menuOpen ? "" : "hidden"}
+                aria-hidden="true"
+              >
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
             <NotificationBell />
             <UserProfile user={user} onLogout={logout} />
           </div>
         </div>
+
+        {/* Mobile menu panel */}
+        {menuOpen && (
+          <div
+            id="mobile-nav"
+            ref={menuPanelRef}
+            className="md:hidden border-t border-white/10 bg-zinc-950/95 backdrop-blur-xl shadow-2xl"
+          >
+            <nav className="mx-auto max-w-7xl px-4 py-3 flex flex-col gap-1" aria-label="Mobile">
+              <MobileNavItem to="/" end>
+                Home
+              </MobileNavItem>
+              <MobileNavItem to="/book">Rooms</MobileNavItem>
+              <MobileNavItem to="/dashboard">Dashboard</MobileNavItem>
+              {canAccessAdmin && <MobileNavItem to="/admin-dashboard">Admin</MobileNavItem>}
+              <MobileNavItem to="/user-guide">User Guide</MobileNavItem>
+            </nav>
+          </div>
+        )}
       </nav>
 
       {/* CONTENT */}
-      <main className="flex-1">
+      <main className="flex-1 min-w-0">
         <Outlet />
       </main>
     </div>
@@ -68,6 +166,28 @@ export default function SiteLayout() {
 }
 
 /* ------------ Sub components ------------ */
+
+function MobileNavItem({ to, children, end = false }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={(e) => e.stopPropagation()}
+      className={({ isActive }) =>
+        [
+          "px-3 py-3 rounded-xl text-sm transition block",
+          "text-slate-300 hover:bg-white/10 hover:text-white",
+          isActive && "bg-emerald-500/20 text-emerald-300 font-medium border border-emerald-400/30",
+        ]
+          .filter(Boolean)
+          .join(" ")
+      }
+    >
+      {children}
+    </NavLink>
+  );
+}
+
 function NavItem({ to, children }) {
   return (
     <NavLink

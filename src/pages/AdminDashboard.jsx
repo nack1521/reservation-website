@@ -138,8 +138,8 @@ export default function AdminDashboard() {
   }, [pendingApprovals, keyword, status]);
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8 py-8 space-y-8">
+    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow w-full min-w-0 text-white">
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Admin Dashboard</h1>
@@ -147,7 +147,7 @@ export default function AdminDashboard() {
               Monitor booking operations, approvals, and room utilization.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link
               to="/admin-teacher-requests"
               className="relative rounded-xl px-4 py-2.5 border border-white/20 bg-white/10 hover:bg-white/15 transition"
@@ -240,12 +240,12 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
+                <table className="min-w-[480px] text-sm">
                   <thead className="text-slate-300/80">
                     <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
                       <th>Requester</th>
                       <th>Room</th>
-                      <th>Schedule</th>
+                      <th className="hidden sm:table-cell">Schedule</th>
                       <th>Status</th>
                       <th className="text-right">Action</th>
                     </tr>
@@ -253,9 +253,9 @@ export default function AdminDashboard() {
                   <tbody className="divide-y divide-white/10">
                     {filteredApprovals.map((item) => (
                       <tr key={item.id || item._id} className="[&>td]:py-2.5 [&>td]:px-3">
-                        <td>{item.user?.name || item.user?.email || "-"}</td>
+                        <td className="break-all">{item.user?.name || item.user?.email || "-"}</td>
                         <td>{item.room?.name || item.roomName || "-"}</td>
-                        <td>
+                        <td className="hidden sm:table-cell">
                           {formatDateTimeRange(item.start, item.end)}
                         </td>
                         <td>{item.status || "pending"}</td>

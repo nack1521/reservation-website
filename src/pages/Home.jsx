@@ -5,18 +5,18 @@ import { reservationsAPI } from "../services/reservations.js";
 
 export default function Home() {
   return (
-    <div className="relative min-h-[calc(100vh-64px)] bg-animated bg-glow overflow-hidden text-white">
+    <div className="relative min-h-[calc(100vh-64px)] w-full min-w-0 bg-animated bg-glow overflow-hidden text-white">
       <BgGlow />
 
       {/* ===== HERO ===== */}
-      <section className="mx-auto max-w-7xl px-6 lg:px-8 pt-16 pb-24">
-        <div className="grid items-center gap-12 lg:grid-cols-2">
+      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-10 pb-16 sm:pt-16 sm:pb-24">
+        <div className="grid items-center gap-8 sm:gap-12 lg:grid-cols-2">
           {/* LEFT: copy */}
           <div className="max-w-xl">
             <p className="text-xs uppercase tracking-[.2em] text-slate-400 font-semibold">
               FIET BOOKINGS
             </p>
-            <h1 className="mt-2 text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.1]">
+            <h1 className="mt-2 text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight leading-[1.1]">
               Try our{" "}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-violet-400">
                 booking system
@@ -28,7 +28,7 @@ export default function Home() {
               เสริมและยืนยันทันที
             </p>
 
-            <div className="mt-8 flex items-center gap-3">
+            <div className="mt-8 flex flex-wrap items-center gap-3">
               {/* CTA 1: เริ่มจอง → เข้า booking เต็มระบบ */}
               <Link
                 to="/book"
@@ -80,7 +80,7 @@ export default function Home() {
 
       {/* ===== ANNOUNCEMENTS + NEXT RESERVATION ===== */}
       <section id="quick-search" className="border-t border-white/10 bg-white/5/50">
-        <div className="mx-auto max-w-7xl px-6 lg:px-8 py-16">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
           <h2 className="text-lg font-medium text-white">Announcements + Maintenance</h2>
           <p className="mt-1 text-sm text-slate-400">
             ตรวจสอบประกาศล่าสุดและดูการจองถัดไปของคุณได้ในที่เดียว
@@ -94,7 +94,7 @@ export default function Home() {
       </section>
 
       {/* ===== FEATURES ===== */}
-      <section className="mx-auto max-w-7xl px-6 lg:px-8 py-16" id="features">
+      <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 sm:py-16" id="features">
         <h2 className="text-lg font-medium text-white">ทำไมต้อง FIET Bookings</h2>
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Feature

@@ -209,9 +209,9 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-animated bg-glow text-white">
+    <div className="min-h-screen bg-animated bg-glow w-full min-w-0 text-white">
       {/* Container */}
-      <div className="mx-auto max-w-6xl px-6 py-8">
+      <div className="mx-auto w-full min-w-0 max-w-6xl px-4 sm:px-6 py-6 sm:py-8">
         {/* Header card (กระชับ + สมดุล) */}
         <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 md:p-7 shadow-[0_30px_120px_-60px_rgba(255,255,255,.25)]">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">

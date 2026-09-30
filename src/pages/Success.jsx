@@ -28,8 +28,8 @@ export default function Success() {
   const addons = Array.isArray(state.addons) ? state.addons : [];
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
-      <div className="mx-auto max-w-4xl px-6 lg:px-8 py-10 space-y-6">
+    <div className="min-h-[calc(100vh-64px)] w-full min-w-0 bg-animated bg-glow text-white">
+      <div className="mx-auto w-full min-w-0 max-w-4xl px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-5 sm:space-y-6">
         {/* หัวข้อ */}
         <div className="no-print flex items-center justify-between">
           <h1 className="text-xl font-semibold">จองสำเร็จ</h1>

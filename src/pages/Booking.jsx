@@ -508,15 +508,16 @@ export default function Booking() {
   return (
     <div className="relative min-h-screen flex flex-col bg-animated bg-glow overflow-x-hidden text-white">
       {/* Header + Stepper */}
-      <div className="mx-auto max-w-6xl w-full px-4 pt-6 md:pt-8">
+      <div className="mx-auto max-w-6xl w-full min-w-0 px-4 pt-6 md:pt-8">
         <div className="flex flex-col items-center text-center">
-          <div className="w-full md:hidden">
+          <div className="w-full">
             {step < 4 && (
-            <Stepper
-            step={step}
-            total={totalSteps}
-            labels={stepLabels}
-            />
+              <>
+                <StepperCompact step={step} total={totalSteps} labels={stepLabels} />
+                <div className="hidden md:block">
+                  <Stepper step={step} total={totalSteps} labels={stepLabels} />
+                </div>
+              </>
             )}
           </div>
 
@@ -553,7 +554,7 @@ export default function Booking() {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 mx-auto max-w-6xl w-full px-4 py-6 flex-1">
+      <div className="relative z-10 mx-auto max-w-6xl w-full min-w-0 px-4 py-6 flex-1">
         <div className="md:grid md:grid-cols-[220px_1fr] md:gap-4 lg:gap-6 h-full">
           <aside className="hidden md:block">
             {step < 4 && (
@@ -1201,13 +1202,39 @@ export default function Booking() {
 }
 
 /* ---------- UI bits ---------- */
+/**
+ * Compact step indicator for phones. The full Stepper below needs ~620px of
+ * horizontal room, which forced a sideways scroll on a 390px screen.
+ */
+function StepperCompact({ step, total, labels = [] }) {
+  const pct = total > 1 ? ((step - 1) / (total - 1)) * 100 : 0;
+  return (
+    <div className="md:hidden w-full px-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium text-emerald-300">
+          ขั้นที่ {step} · {labels[step - 1] || ""}
+        </span>
+        <span className="text-xs text-slate-400">
+          {step}/{total}
+        </span>
+      </div>
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-700">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-500"
+          style={{ width: `${Math.max(pct, 8)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Stepper({ step, total, labels = [] }) {
   const cols = total * 2 - 1; // circle,line,circle,... (คอลัมน์)
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-2 overflow-x-auto">
+    <div className="hidden md:block w-full max-w-4xl mx-auto px-2">
       <div
-        className="grid items-center gap-x-2 min-w-[620px] md:min-w-0"
+        className="grid items-center gap-x-2"
         style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
       >
         {/* วงกลมแต่ละสเต็ป (อยู่คอลัมน์เลขคี่) */}

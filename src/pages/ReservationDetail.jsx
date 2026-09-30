@@ -146,8 +146,8 @@ export default function ReservationDetail() {
 
   if (!booking) {
     return (
-      <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
-        <div className="mx-auto max-w-3xl px-6 py-10 space-y-4">
+      <div className="min-h-[calc(100vh-64px)] w-full min-w-0 bg-animated bg-glow text-white">
+        <div className="mx-auto w-full min-w-0 max-w-3xl px-4 sm:px-6 py-6 sm:py-10 space-y-4">
           <Link to="/dashboard" className="text-sm text-slate-300 hover:text-white">
             ← กลับไปแดชบอร์ด
           </Link>
@@ -160,13 +160,13 @@ export default function ReservationDetail() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
-      <div className="mx-auto max-w-3xl px-6 py-10 space-y-6">
-        <div className="flex items-center justify-between gap-3">
+    <div className="min-h-[calc(100vh-64px)] w-full min-w-0 bg-animated bg-glow text-white">
+      <div className="mx-auto w-full min-w-0 max-w-3xl px-4 sm:px-6 py-6 sm:py-10 space-y-5 sm:space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <Link to="/dashboard" className="text-sm text-slate-300 hover:text-white">
             ← กลับไปแดชบอร์ด
           </Link>
-          <span className="text-xs text-slate-400">Reservation ID: {booking.id || "-"}</span>
+          <span className="text-xs text-slate-400 break-all">Reservation ID: {booking.id || "-"}</span>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[.04] backdrop-blur p-5 space-y-5">
@@ -283,7 +283,7 @@ export default function ReservationDetail() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
                     <label className="block text-xs font-medium text-slate-300 mb-1">
                       เวลาเริ่ม (Start)

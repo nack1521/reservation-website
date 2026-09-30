@@ -149,8 +149,8 @@ export default function AdminTeacherRequests() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8 py-8 space-y-6">
+    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow w-full min-w-0 text-white">
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Teacher Role Requests</h1>
@@ -231,8 +231,8 @@ export default function AdminTeacherRequests() {
                       />
                     </th>
                     <th>User</th>
-                    <th>Email</th>
-                    <th>Roles</th>
+                    <th className="hidden md:table-cell">Email</th>
+                    <th className="hidden sm:table-cell">Roles</th>
                     <th className="text-right">Actions</th>
                   </tr>
                 </thead>
@@ -254,8 +254,8 @@ export default function AdminTeacherRequests() {
                           />
                         </td>
                         <td className="font-medium">{item?.name || id || "-"}</td>
-                        <td>{item?.email || "-"}</td>
-                        <td>{roleLabels.join(", ") || "-"}</td>
+                        <td className="hidden md:table-cell break-all">{item?.email || "-"}</td>
+                        <td className="hidden sm:table-cell">{roleLabels.join(", ") || "-"}</td>
                         <td className="text-right">
                           <div className="inline-flex flex-wrap gap-2 justify-end">
                             <button

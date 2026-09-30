@@ -463,8 +463,8 @@ export default function AdminTransactions() {
     : null;
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8 py-8 space-y-6">
+    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow w-full min-w-0 text-white">
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Manage Transactions</h1>
@@ -591,28 +591,28 @@ export default function AdminTransactions() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="text-slate-300/80">
-                  <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
-                    <th>Created At</th>
-                    <th>User</th>
-                    <th>Room</th>
-                    <th>Start</th>
-                    <th>End</th>
-                    <th>Status</th>
-                    <th className="text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/10">
-                  {rows.map((item) => (
+                <table className="min-w-[520px] text-sm">
+                  <thead className="text-slate-300/80">
+                    <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
+                      <th>Created At</th>
+                      <th>User</th>
+                      <th>Room</th>
+                      <th className="hidden sm:table-cell">Start</th>
+                      <th className="hidden sm:table-cell">End</th>
+                      <th>Status</th>
+                      <th className="text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {rows.map((item) => (
                     <tr key={item.id} className="[&>td]:py-2.5 [&>td]:px-3 align-top">
                       <td className="text-slate-300 whitespace-nowrap">
                         {item.createdAt ? formatDateTime(item.createdAt) : "-"}
                       </td>
-                      <td>{item.user}</td>
+                      <td className="break-all">{item.user}</td>
                       <td>{item.room}</td>
-                      <td>{item.start ? formatDateTime(item.start) : "-"}</td>
-                      <td>{item.end ? formatDateTime(item.end) : "-"}</td>
+                      <td className="hidden sm:table-cell whitespace-nowrap">{item.start ? formatDateTime(item.start) : "-"}</td>
+                      <td className="hidden sm:table-cell whitespace-nowrap">{item.end ? formatDateTime(item.end) : "-"}</td>
                       <td>{item.status}</td>
                       <td className="text-right">
                         <button

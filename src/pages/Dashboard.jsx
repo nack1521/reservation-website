@@ -70,8 +70,8 @@ export default function Dashboard() {
   const kpiHistory = Number(summary.total ?? bookings.length);
 
   return (
-    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow text-white flex flex-col">
-      <div className="mx-auto max-w-7xl px-6 lg:px-8 py-8 space-y-8">
+    <div className="min-h-[calc(100vh-64px)] bg-animated bg-glow w-full min-w-0 text-white flex flex-col">
+      <div className="mx-auto w-full min-w-0 max-w-7xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Header + CTA */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -143,14 +143,14 @@ export default function Dashboard() {
             )
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-[420px] text-sm">
                 <thead className="text-slate-300/80">
                   <tr className="[&>th]:py-2 [&>th]:px-3 text-left">
                     <th>วันเวลา</th>
                     <th>ห้อง / ชั้น</th>
-                    <th>สาขา</th>
-                    <th>ประเภท</th>
-                    <th>ความจุ</th>
+                    <th className="hidden sm:table-cell">สาขา</th>
+                    <th className="hidden md:table-cell">ประเภท</th>
+                    <th className="hidden md:table-cell">ความจุ</th>
                     <th>สถานะ</th>
                   </tr>
                 </thead>
@@ -169,11 +169,11 @@ export default function Dashboard() {
                       tabIndex={0}
                       role="button"
                     >
-                      <td>{thaiDate(b.date)} · {b.start}-{b.end}</td>
-                      <td>{b.room} · ชั้น {b.floor}</td>
-                      <td>{b.dept}</td>
-                      <td>{b.type}</td>
-                      <td>{b.capacity}</td>
+                      <td className="whitespace-nowrap">{thaiDate(b.date)} · {b.start}-{b.end}</td>
+                      <td className="whitespace-nowrap">{b.room} · ชั้น {b.floor}</td>
+                      <td className="hidden sm:table-cell">{b.dept}</td>
+                      <td className="hidden md:table-cell">{b.type}</td>
+                      <td className="hidden md:table-cell">{b.capacity}</td>
                       <td><StatusChip status={b.status} /></td>
                     </tr>
                   ))}

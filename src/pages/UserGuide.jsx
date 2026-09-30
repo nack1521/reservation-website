@@ -4,8 +4,8 @@ import FietLogo from "../components/FietLogo.jsx";
 
 export default function UserGuide() {
   return (
-    <div className="min-h-screen bg-animated bg-glow text-white py-12 px-6">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-animated bg-glow w-full min-w-0 text-white py-8 sm:py-12 px-4 sm:px-6">
+      <div className="w-full min-w-0 max-w-4xl mx-auto">
         {/* Header */}
         <header className="flex flex-col items-center text-center">
           <FietLogo size={75} />
